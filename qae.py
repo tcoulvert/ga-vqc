@@ -1,4 +1,5 @@
 import contextlib
+import os
 import time
 
 import matplotlib.pyplot as plt
@@ -6,13 +7,13 @@ import pennylane as qml
 import pickle
 import scipy as sp
 from math import isclose
+from numba import cuda
 from pennylane import numpy as np
 
 from VQC_ABC import VQC
 
-def main(ansatz, ansatz_save, params, events, n_ansatz_qubits, n_latent_qubits, rng_seed, ix, n_shots=5000):
-    rng = np.random.default_rng(seed=rng_seed)
-    time.sleep(5*rng.random())
+def main(ansatz, ansatz_save, params, events, n_ansatz_qubits, n_latent_qubits, rng_seed, ix, gen, start_time, n_shots=5000):
+    time.sleep(ix)
     with contextlib.redirect_stdout(None):
         exec('import setGPU')
     n_trash_qubits = n_ansatz_qubits - n_latent_qubits
@@ -32,7 +33,9 @@ def main(ansatz, ansatz_save, params, events, n_ansatz_qubits, n_latent_qubits, 
         'n_wires': n_wires,
         'swap_pattern': swap_pattern,
         'rng_seed': rng_seed,
-        'ix': ix
+        'ix': ix,
+        'gen': gen,
+        'start_time': start_time,
     }
     
     best_fid = train(events, config)
@@ -69,53 +72,15 @@ def train(events, config):
     circuit = config['qnode']
     rng = np.random.default_rng(seed=config['rng_seed'])
     qng_cost = [1]
-    opt = qml.QNGOptimizer(1e-6, approx='block-diag')
+    opt = qml.QNGOptimizer(1e-5, approx='block-diag')
 
-#         for train_size in [1, 10, 100, 1000, 10000]:
-#             step = 0
-#             best_perf = [2, np.zeros(3)]
-#             mean_check = [0]
-#             theta = sp.pi * self.rng.random(size=3, requires_grad=True)
-#             event_sub = self.rng.choice(events, train_size, replace=False)
-#             while True:
-#                 if train_size > 30:
-#                     event_batch = self.rng.choice(event_sub, 30, replace=False)
-#                 else:
-#                     event_batch = event_sub
-
-#                 grads = np.zeros((event_batch.shape[0], theta.shape[0]))
-#                 costs = np.zeros(event_batch.shape[0])
-
-#                 # if step%25 == 1:
-#                 #     print('Step %d with cost %.4f' % (step, qng_cost[ix][-1]))
-
-#                 for i in range(event_batch.shape[0]):
-#                     fub_stud = qml.metric_tensor(circuit, approx='block-diag')(theta, event=event_batch[i]) # doesnt compute fubiny-study automatically??
-#                     grads[i] = np.matmul(fub_stud, opt.compute_grad(circuit, (theta, event_batch[i]), {})[0][0]) # isn't already anti-gradient??
-#                     costs[i] = circuit(theta, event=event_batch[i])
-#                 if best_perf[0] > costs.mean(axis=0):
-#                     best_perf[0] = costs.mean(axis=0)
-#                     best_perf[1] = theta
-#                     print(best_perf)
-#                 theta = theta - np.sum(grads, axis=0)
-#                 qng_cost[ix].append(costs.mean(axis=0))
-#                 mean_check[ix] += costs.mean(axis=0)
-
-#                 if np.nonzero(np.isclose(np.sum(grads, axis=0), np.zeros(theta.shape[0]), rtol=1e-05, atol=1e-08, equal_nan=False))[0].shape == 0:
-#                     break
-#                 elif step%1000 == 0:
-#                     mean_check[ix] = mean_check[ix] / 1000
-#                     if step%2000 == 0 and isclose(mean_check[-2], mean_check[-1], rtol=1e-03, atol=1e-05):
-#                         break
-#                     mean_check.append(0)
-#                 step += 1
-
-    train_size, steps = 1, 100
+    train_size, steps = 10, 200
     best_perf = [2, np.array([])]
+    stop_check = [[0,0], [0,0]]
     theta = sp.pi * rng.random(size=np.shape(np.array(config['params'])), requires_grad=True)
     event_sub = rng.choice(events, train_size, replace=False)
-    for _ in range(steps):
-
+    step = 0
+    while True:
         if train_size > 30:
             event_batch = rng.choice(event_sub, 30, replace=False)
         else:
@@ -124,12 +89,8 @@ def train(events, config):
         grads = np.zeros((event_batch.shape[0], theta.shape[0]))
         costs = np.zeros(event_batch.shape[0])
 
-        if _ == (steps-1):
-            print('Step %d with cost %.4f' % (_, qng_cost[-1]))
-        # print('Step %d with cost %.4f' % (_, qng_cost[-1]))
-
+        # iterating over all the training data
         for i in range(event_batch.shape[0]):
-            # print(qml.draw(circuit, expansion_strategy='device', show_all_wires=True)(theta, event=event_batch[i], config=config))
             fub_stud = qml.metric_tensor(circuit, approx="block-diag")(theta, event=event_batch[i], config=config)
             grads[i] = np.matmul(fub_stud, opt.compute_grad(circuit, (theta, event_batch[i], config), {})[0][0])
             costs[i] = circuit(theta, event=event_batch[i], config=config)
@@ -139,16 +100,46 @@ def train(events, config):
         theta = theta - np.sum(grads, axis=0)
         qng_cost.append(costs.mean(axis=0))
 
-    np.save('%02dga_best%.e_data_theta' % (config['ix'], train_size), best_perf[1])
-    with open('%02dga_best%.e_data_ansatz' % (config['ix'], train_size), "wb") as f:
+        # checking the stopping condition
+        if step%30 == 0:
+            if step%60 == 0:
+                stop_check[1][0] = np.mean(qng_cost[step-30:], axis=0)
+                stop_check[1][1] = np.std(qng_cost[step-30:], axis=0)
+                if np.isclose(stop_check[0][0], stop_check[1][0], atol=np.amin([stop_check[0][1], stop_check[1][1]])):
+                    break
+            stop_check[0][0] = np.mean(qng_cost[step-30:], axis=0)
+            stop_check[0][1] = np.std(qng_cost[step-30:], axis=0)
+        step += 1
+
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    destdir = os.path.join(script_path, 'qae_runs_%s' % config['start_time'])
+    if not os.path.exists(destdir):
+        os.makedirs(destdir)
+    
+    destdir_thetas = os.path.join(destdir, 'opt_thetas')
+    if not os.path.exists(destdir_thetas):
+        os.makedirs(destdir_thetas)
+    filepath_thetas = os.path.join(destdir_thetas, '%02d_%03dga_best%.e_data_theta' % (config['ix'], config['gen'], train_size))
+    np.save(filepath_thetas, best_perf[1])
+    
+    destdir_ansatz = os.path.join(destdir, 'opt_ansatz')
+    if not os.path.exists(destdir_ansatz):
+        os.makedirs(destdir_ansatz)
+    filepath_ansatz = os.path.join(destdir_ansatz, '%02d_%03dga_best%.e_data_ansatz' % (config['ix'], config['gen'], train_size))
+    with open(filepath_ansatz, "wb") as f:
         pickle.dump(config['ansatz_save'], f)
+        
+    destdir_curves = os.path.join(destdir, 'qml_curves')
+    if not os.path.exists(destdir_curves):
+        os.makedirs(destdir_curves)
+    filepath_curves = os.path.join(destdir_curves, "%02d_%03dga_QNG_Descent-%d_data.pdf" % (config['ix'], config['gen'], train_size))
     plt.figure(train_size)
     plt.style.use("seaborn")
     plt.plot(qng_cost, "g", label="QNG Descent - %d data" % train_size)
     plt.ylabel("1 - Fid.")
     plt.xlabel("Optimization steps")
     plt.legend()
-    plt.savefig("%02dga_QNG_Descent-%d_data.pdf" % (config['ix'], train_size))
+    plt.savefig(filepath_curves)
     # plt.show()
 
     return 1-(best_perf[0]+np.mean(qng_cost, axis=0))

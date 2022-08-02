@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 from matplotlib import pyplot as plt
+from numba import cuda
 from sklearn.preprocessing import MinMaxScaler
 
 from GA_ABC import GA_Individual, GA_Model
@@ -19,7 +20,7 @@ class Individual(GA_Individual):
     """
     Data structure for the ansatz.
     """
-    def __init__(self, n_qubits, n_moments, gates_arr, rng_seed):
+    def __init__(self, n_qubits, n_moments, gates_arr, gates_probs, rng_seed):
         """
         Initializes the inidivual object, all individuals (ansatz) are members of this class.
             - n_qubits: Number of qubits in the ansatz.
@@ -32,6 +33,7 @@ class Individual(GA_Individual):
         self.n_qubits = n_qubits
         self.n_moments = n_moments
         self.gates_arr = gates_arr
+        self.gates_probs = gates_probs
         self.rng = np.random.default_rng(seed=rng_seed)
         
         self.ansatz = []
@@ -70,7 +72,7 @@ class Individual(GA_Individual):
             for i in ix:
                 if self.ansatz[j][i] != 0:
                     continue
-                k = self.rng.choice(self.gates_arr)
+                k = self.rng.choice(self.gates_arr, p=self.gates_probs)
                 
                 # if k.find('_') < 0:
                 if k[0] != 'C': # change to search for _ by modifying the gates_arr?
@@ -102,6 +104,7 @@ class Individual(GA_Individual):
                  'CNOT': []}
         """
         # print(self.ansatz)
+        self.ansatz_qml = []
         for j in range(len(self.ansatz)):
             moment_dict = {i: list() for i in self.gates_arr}
             stored_i = []
@@ -137,7 +140,7 @@ class Model(GA_Model):
     """
     Container for all the logic of the GA Model.
     
-    TODO:
+    TODO: change the I assignment to a random assignment. check for back-to-back CNOTs bc compile to I
     """
     
     def __init__(self, config):
@@ -150,18 +153,19 @@ class Model(GA_Model):
         self.n_qubits = config['n_qubits']
         self.n_moments = config['n_moments']
         self.gates_arr = config['gates_arr']
+        self.gates_probs = config['gates_probs']
         self.pop_size = config['pop_size']
         self.n_winners = config['n_winners']
         self.n_mutations = config['n_mutations']
         self.n_steps = config['n_steps']
-        self.best_perf = [0, []]
+        self.best_perf = [0, [], 0]
         
         ### hyperparams for qae ###
         self.latent_qubits = config['latent_qubits']
         self.n_shots = config['n_shots']
         self.events = config['events']
         
-        self.start_time = run_start = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.script_path = os.path.dirname(os.path.realpath(__file__))
         self.rng_seed = config['seed']
         self.rng = np.random.default_rng(seed=self.rng_seed)
@@ -169,82 +173,69 @@ class Model(GA_Model):
         self.population = []
         self.fitness_arr = []
         for i in range(self.pop_size):
-            self.population.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.rng_seed))
+            self.population.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed))
             self.fitness_arr.append(0)
     
     def evolve(self):
         """
         Evolves the GA.
         """
-        for i in range(self.n_steps):
-            print(f'GA iteration {i}')
-            self.fitness_arr = [0 for i in self.population]
-            self.evaluate_fitness()
-            self.select()
-            self.mate(self.population)
-            no_mutate_pop = len(self.population)
-            for i in range(self.pop_size-no_mutate_pop):
-                ix = self.rng.integers(no_mutate_pop)
-                self.mutate(self.population[ix])
-                continue
-            
-            print(f'Best Fitness: {self.best_perf[0]}, Best ansatz: {self.best_perf[1]}')
-            continue
-            
+        step = 0
         results = {
-            'full_population': self.population,
-            'best_ansatz': self.best_perf[1],
-            'best_fitness': self.best_perf[0],
+            'full_population': None,
+            'full_fitness': None,
+            'best_ansatz': None,
+            'best_fitness': 0.0,
         }
-        print('filename is: ', make_results_json(self.start_time, self.script_path))
+        while True:
+            print(f'GA iteration {step}')
+            self.fitness_arr = [0 for i in self.population]
+            self.evaluate_fitness(step)
+            results['full_population'] = [i.ansatz for i in self.population]
+            results['full_fitness'] = self.fitness_arr
+            results['best_ansatz'] = self.best_perf[1].ansatz
+            results['best_fitness'] = self.best_perf[0]
+            
+            parents = self.select()
+            for i in range(self.pop_size//self.n_winners):
+                self.mate(parents)
+                
+            print(f'Best Fitness: {self.best_perf[0]}, Best ansatz: {self.best_perf[1]}')
+            
+            if step > 50 and step%self.n_steps == 0:
+                if (step - self.best_perf[2]) > self.n_steps:
+                    break
+            make_results_json(results, self.start_time, self.script_path, step)
+            step += 1
+        print('filename is: ', make_results_json(results, self.start_time, self.script_path, step, final_flag=True))
     
-    def evaluate_fitness(self):
+    def evaluate_fitness(self, gen):
         """
         Evaluates the fitness level of all ansatz. Runs the QML optimization task.
         
         TODO: change to do per given ansatz (so we don't have to train every ansatz).
             -> make so fitness_arr can be shorter than population
         """
-        # ix = 0
-        # for p in self.population:
-        #     p.convert_to_qml()
-        #     qae_t = main(p.ansatz_qml, p.params, self.events, self.n_qubits, self.latent_qubits, self.rng_seed, ix)
-        #     self.fitness_arr[ix] = qae_t
-        #     ix += 1
-        # processes = []
-#         for p in self.population:
-#             p.convert_to_qml()
-#             qae = mp.Process(target=main, args=(p.ansatz_qml, p.params, self.events, self.n_qubits, self.latent_qubits, self.rng_seed, ix))
-#             qae.start()
-#             processes.append(qae)
-#             self.fitness_arr[ix] = qae
-#             ix += 1
-            
-#         for process in processes:
-#             process.join()
-
         ix = 0
         args_arr = []
-        print(len(self.population))
         for p in self.population:
             args = []
             p.convert_to_qml()
-            args.extend((p.ansatz_qml, p.ansatz, p.params, self.events, self.n_qubits, self.latent_qubits, self.rng_seed, ix))
+            args.extend((p.ansatz_qml, p.ansatz, p.params, self.events, self.n_qubits, self.latent_qubits, self.rng_seed, ix, gen, self.start_time))
             args_arr.append(args)
             ix += 1
         
         start_time = time.time()
-        # with mp.Pool(processes=len(args_arr)) as pool:
         with mp.get_context("spawn").Pool(processes=len(args_arr)) as pool:
             self.fitness_arr = pool.starmap(main, args_arr)
         end_time = time.time()
         exec_time = end_time-start_time
         print(f'QML Optimization in {exec_time:.2f} seconds')
-        print(len(self.fitness_arr))
         
         if self.best_perf[0] < np.amax(self.fitness_arr):
             self.best_perf[0] = np.amax(self.fitness_arr)
             self.best_perf[1] = self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]]
+            self.best_perf[2] = gen
     
     def select(self):
         """
@@ -256,7 +247,7 @@ class Model(GA_Model):
             winner_arr.append(winner)
             self.fitness_arr.remove(np.amax(self.fitness_arr))
             
-        self.population = winner_arr
+        return winner_arr
     
     def mate(self, parents):
         """
@@ -290,21 +281,25 @@ class Model(GA_Model):
             children[-1][chosen_moments[-1]] = parents[triswap_ix][chosen_moments[triswap_ix]]
             children[triswap_ix][chosen_moments[triswap_ix]] = parents[-1][chosen_moments[-1]]
         
-        self.population = children
+        for child in children:
+            self.mutate(child)
     
     def mutate(self, ansatz):
         """
-        Mutates a single ansatz by modifying 1 random qubit at 1 random time.
+        Mutates a single ansatz by modifying n_mutations random qubit(s) at 1 random time each.
         
         TODO: add in functionality to add or remove moments from an ansatz
         """
+        double_swap_flag = 0
         for i in range(self.n_mutations):
             j = self.rng.integers(self.n_moments)
             i = self.rng.integers(self.n_qubits)
-            k = self.rng.choice(self.gates_arr)
+            k = self.rng.choice(self.gates_arr, p=self.gates_probs)
 
             if ansatz[j][i][0] == 'C':
-                ansatz[j][int(ansatz[j][i][-1])] = 'I'
+                double_swap_flag += 1
+                k_p = self.rng.permutation(self.gates_arr[:-1], p=self.gates_probs)
+                ansatz[j][int(ansatz[j][i][-1])] = k_p
 
             # if k.find('_') < 0:
             if k[0] != 'C':
@@ -315,7 +310,14 @@ class Model(GA_Model):
                     if q_p == i:
                         continue
                     if ansatz[j][q_p].find('_') > 0:
-                        ansatz[j][int(ansatz[j][q_p][-1])] = 'I'
+                        double_swap_flag += 1
+                        k_pp = self.rng.choice(self.gates_arr, p=self.gates_probs)
+                        if double_swap_flag == 2 and k_pp[0] == 'C':
+                            direction = self.rng.permutation(['_C', '_T'])
+                            ansatz[j][int(ansatz[j][i][-1])] = k + direction[0] + f'-{int(ansatz[j][q_p][-1])}'
+                            ansatz[j][int(ansatz[j][q_p][-1])] = k + direction[1] + f'-{int(ansatz[j][i][-1])}'
+                        else:
+                            ansatz[j][int(ansatz[j][q_p][-1])] = k_pp
 
                     direction = self.rng.permutation(['_C', '_T'])
                     ansatz[j][i] = k + direction[0] + f'-{q_p}'

@@ -1,8 +1,11 @@
 import json
 import os
 
-def make_results_json(start_time, script_path):
-    filename = 'evolution_results-%s.json' % (start_time)
+def make_results_json(results, start_time, script_path, gen, final_flag=False):
+    if final_flag:
+        filename = 'final_evolution_results-%s.json' % (start_time)
+    else:
+        filename = '%03d_evolution_results-%s.json' % (gen, start_time)
     destdir = os.path.join(script_path, 'ga_runs')
     filepath = os.path.join(destdir, filename)
     if not os.path.exists(destdir):
