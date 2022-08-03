@@ -90,7 +90,7 @@ class Individual(GA_Individual):
                     break
                     
                 if self.ansatz[j][i] == 0:
-                    self.ansatz[j][i] = 'I'
+                    self.ansatz[j][i] = self.rng.choice(self.gates_arr[:-1])
         
     def convert_to_qml(self):
         """
@@ -172,9 +172,10 @@ class Model(GA_Model):
         
         self.population = []
         self.fitness_arr = []
-        for i in range(self.pop_size):
+        for _ in range(self.pop_size):
             self.population.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed))
             self.fitness_arr.append(0)
+            print(self.population[_])
     
     def evolve(self):
         """
@@ -192,7 +193,7 @@ class Model(GA_Model):
             self.fitness_arr = [0 for i in self.population]
             self.evaluate_fitness(step)
             results['full_population'] = [i.ansatz for i in self.population]
-            results['full_fitness'] = self.fitness_arr
+            # results['full_fitness'] = self.fitness_arr
             results['best_ansatz'] = self.best_perf[1].ansatz
             results['best_fitness'] = self.best_perf[0]
             
@@ -202,7 +203,7 @@ class Model(GA_Model):
                 
             print(f'Best Fitness: {self.best_perf[0]}, Best ansatz: {self.best_perf[1]}')
             
-            if step > 50 and step%self.n_steps == 0:
+            if step > 20 and step%self.n_steps == 0:
                 if (step - self.best_perf[2]) > self.n_steps:
                     break
             make_results_json(results, self.start_time, self.script_path, step)
@@ -290,6 +291,7 @@ class Model(GA_Model):
         
         TODO: add in functionality to add or remove moments from an ansatz
         """
+        print(ansatz)
         double_swap_flag = 0
         for i in range(self.n_mutations):
             j = self.rng.integers(self.n_moments)
@@ -298,7 +300,7 @@ class Model(GA_Model):
 
             if ansatz[j][i][0] == 'C':
                 double_swap_flag += 1
-                k_p = self.rng.permutation(self.gates_arr[:-1], p=self.gates_probs)
+                k_p = self.rng.choice(self.gates_arr[:-1])
                 ansatz[j][int(ansatz[j][i][-1])] = k_p
 
             # if k.find('_') < 0:
@@ -317,7 +319,7 @@ class Model(GA_Model):
                             ansatz[j][int(ansatz[j][i][-1])] = k + direction[0] + f'-{int(ansatz[j][q_p][-1])}'
                             ansatz[j][int(ansatz[j][q_p][-1])] = k + direction[1] + f'-{int(ansatz[j][i][-1])}'
                         else:
-                            ansatz[j][int(ansatz[j][q_p][-1])] = k_pp
+                            ansatz[j][int(ansatz[j][q_p][-1])] = self.rng.choice(self.gates_arr[:-1])
 
                     direction = self.rng.permutation(['_C', '_T'])
                     ansatz[j][i] = k + direction[0] + f'-{q_p}'

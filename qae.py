@@ -13,6 +13,7 @@ from pennylane import numpy as np
 from VQC_ABC import VQC
 
 def main(ansatz, ansatz_save, params, events, n_ansatz_qubits, n_latent_qubits, rng_seed, ix, gen, start_time, n_shots=5000):
+    # os.environ["CUDA_VISIBLE_DEVICES"]="0"
     time.sleep(ix)
     with contextlib.redirect_stdout(None):
         exec('import setGPU')
