@@ -75,7 +75,7 @@ class Individual(GA_Individual):
                 k = self.rng.choice(self.gates_arr, p=self.gates_probs)
                 
                 # if k.find('_') < 0:
-                if k[0] != 'C': # change to search for _ by modifying the gates_arr?
+                if k[0] != 'C':
                     self.ansatz[j][i] = k
                     continue
                     
@@ -90,6 +90,7 @@ class Individual(GA_Individual):
                     break
                     
                 if self.ansatz[j][i] == 0:
+                    # self.ansatz[j][i] = 'I'
                     self.ansatz[j][i] = self.rng.choice(self.gates_arr[:-1])
         
     def convert_to_qml(self):
@@ -103,7 +104,6 @@ class Individual(GA_Individual):
                  'RZ': [],
                  'CNOT': []}
         """
-        # print(self.ansatz)
         self.ansatz_qml = []
         for j in range(len(self.ansatz)):
             moment_dict = {i: list() for i in self.gates_arr}
@@ -157,6 +157,7 @@ class Model(GA_Model):
         self.pop_size = config['pop_size']
         self.n_winners = config['n_winners']
         self.n_mutations = config['n_mutations']
+        self.n_mate_swaps = config['n_mate_swaps']
         self.n_steps = config['n_steps']
         self.best_perf = [0, [], 0]
         
@@ -164,6 +165,7 @@ class Model(GA_Model):
         self.latent_qubits = config['latent_qubits']
         self.n_shots = config['n_shots']
         self.events = config['events']
+        self.train_size = config['train_size']
         
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.script_path = os.path.dirname(os.path.realpath(__file__))
@@ -172,10 +174,9 @@ class Model(GA_Model):
         
         self.population = []
         self.fitness_arr = []
-        for _ in range(self.pop_size):
+        for i in range(self.pop_size):
             self.population.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed))
             self.fitness_arr.append(0)
-            print(self.population[_])
     
     def evolve(self):
         """
@@ -187,19 +188,22 @@ class Model(GA_Model):
             'full_fitness': None,
             'best_ansatz': None,
             'best_fitness': 0.0,
+            'best_fitness_gen': 0,
         }
         while True:
             print(f'GA iteration {step}')
             self.fitness_arr = [0 for i in self.population]
             self.evaluate_fitness(step)
+            
             results['full_population'] = [i.ansatz for i in self.population]
-            # results['full_fitness'] = self.fitness_arr
-            results['best_ansatz'] = self.best_perf[1].ansatz
+            results['full_fitness'] = [i.tolist() for i in self.fitness_arr]
+            results['best_ansatz'] = self.best_perf[1]
             results['best_fitness'] = self.best_perf[0]
+            results['best_fitness_gen'] = self.best_perf[2]
             
             parents = self.select()
-            for i in range(self.pop_size//self.n_winners):
-                self.mate(parents)
+            self.population = []
+            self.mate(parents)
                 
             print(f'Best Fitness: {self.best_perf[0]}, Best ansatz: {self.best_perf[1]}')
             
@@ -220,10 +224,10 @@ class Model(GA_Model):
         ix = 0
         args_arr = []
         for p in self.population:
-            args = []
             p.convert_to_qml()
-            args.extend((p.ansatz_qml, p.ansatz, p.params, self.events, self.n_qubits, self.latent_qubits, self.rng_seed, ix, gen, self.start_time))
-            args_arr.append(args)
+            event_sub = self.rng.choice(self.events, self.train_size, replace=False)
+            args_arr.append((p.ansatz_qml, p.ansatz, p.params, event_sub, self.train_size, self.n_qubits, 
+                             self.latent_qubits, self.rng_seed, ix, gen, self.start_time, self.n_shots))
             ix += 1
         
         start_time = time.time()
@@ -234,8 +238,10 @@ class Model(GA_Model):
         print(f'QML Optimization in {exec_time:.2f} seconds')
         
         if self.best_perf[0] < np.amax(self.fitness_arr):
+            print('!! IMPROVED PERFORMANCE !!')
             self.best_perf[0] = np.amax(self.fitness_arr)
-            self.best_perf[1] = self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]]
+            # fix memory bug
+            self.best_perf[1] = self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]].ansatz
             self.best_perf[2] = gen
     
     def select(self):
@@ -249,56 +255,80 @@ class Model(GA_Model):
             self.fitness_arr.remove(np.amax(self.fitness_arr))
             
         return winner_arr
-    
+            
     def mate(self, parents):
         """
-        Swaps the moments of ansatz.
+        Swaps the qubits of ansatz.
         
-        TODO: add in functionality to swap at the gate level
+        TODO:
         """
-        # Randomly shuffle parent array
-        parents_copy = [i for i in parents]
-        ix_arr = self.rng.permutation(len(parents))
-        for i in range(len(parents)):
-            parents[i] = parents_copy[ix_arr[i]]
+        children_arr = []
+        swap_ixs = []
+        parents = self.deep_permutation(parents)
+        while len(parents) < self.pop_size:
+            parents.extend(self.deep_permutation(parents))
+            
+        # Create index pairings for swapping
+        for j in range(len(parents)//self.n_winners):
+            for i in range(self.n_winners):
+                if i%2 != 0:
+                    continue
+                swap_ixs.append([(j*self.n_winners)+i, (j*self.n_winners)+i+1])
+
+        # Perform the swap with neighboring parents
+        i_set = set()
+        for swap_ix in swap_ixs: # set up for odd number of parents
+            children = [parents[swap_ix[0]], parents[swap_ix[1]]]
+            j0, j1 = self.rng.integers(len(children[0])), self.rng.integers(len(children[1]))
+            i0 = i1 = self.rng.integers(self.n_qubits)
+
+            i_set.add(i0)
+            while True:
+                i0_new = i1_new = -1
+                if children[0][j0, i0].find('_') > 0:
+                    i1_new = int(children[0][j0, i0][-1])
+                    i_set.add(i1_new)
+                if children[1][j1, i1].find('_') > 0:
+                    i0_new = int(children[1][j1, i1][-1])
+                    if i0_new == i1_new:
+                        break
+                    i_set.add(i0_new)
+                i0, i1 = i0_new, i1_new
+
+                if i0 < 0 or i1 < 0:
+                    break
+
+            for i in i_set:
+                children[0][j0, i] = parents[swap_ix[1]][j1, i]
+                children[1][j1, i] = parents[swap_ix[0]][j0, i]
+
+            children_arr.extend(children)
+            
+        for child in children_arr:
+            if len(self.population) < self.pop_size:
+                self.mutate(child)
         
-        # Choose moments to swap for each parent
-        chosen_moments = np.zeros(len(parents))
-        for p in range(len(parents)):
-            chosen_moments[p] = self.rng.integers(len(parents[p]))
+    def deep_permutation(self, arr):
+        arr_copy = [i for i in arr]
+        ix_arr = self.rng.permutation(len(arr))
+        for i in range(len(arr)):
+            arr[i] = arr_copy[ix_arr[i]]
+            
+        return arr
         
-        # Create an array of children for the output
-        children = [i for i in parents]
-        
-        # Perform the swap with neighboring parents 
-        # (and a 3-way swap if odd number of parents)
-        for i in range(len(parents)):
-            if i%2 != 1:
-                continue
-            children[i][chosen_moments[i]] = parents[i-1][chosen_moments[i-1]]
-            children[i-1][chosen_moments[i-1]] = parents[i][chosen_moments[i]]
-        if len(parents)%2 != 0:
-            triswap_ix = self.rng.integers(len(parents)-1)
-            children[-1][chosen_moments[-1]] = parents[triswap_ix][chosen_moments[triswap_ix]]
-            children[triswap_ix][chosen_moments[triswap_ix]] = parents[-1][chosen_moments[-1]]
-        
-        for child in children:
-            self.mutate(child)
-    
     def mutate(self, ansatz):
         """
         Mutates a single ansatz by modifying n_mutations random qubit(s) at 1 random time each.
         
         TODO: add in functionality to add or remove moments from an ansatz
         """
-        print(ansatz)
-        double_swap_flag = 0
-        for i in range(self.n_mutations):
+        for _ in range(self.n_mutations):
+            double_swap_flag = 0
             j = self.rng.integers(self.n_moments)
             i = self.rng.integers(self.n_qubits)
             k = self.rng.choice(self.gates_arr, p=self.gates_probs)
 
-            if ansatz[j][i][0] == 'C':
+            if ansatz[j][i].find('_') > 0:
                 double_swap_flag += 1
                 k_p = self.rng.choice(self.gates_arr[:-1])
                 ansatz[j][int(ansatz[j][i][-1])] = k_p
