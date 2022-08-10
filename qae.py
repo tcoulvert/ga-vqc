@@ -1,14 +1,14 @@
 import psutil
-print(f'Mem initial - {psutil.Process().memory_info().rss / (1024 * 1024)}')
+# print(f'Mem initial - {psutil.Process().memory_info().rss / (1024 * 1024)}')
 import contextlib
 import os
 import time
 
 import matplotlib.pyplot as plt # big mems
 # from matplotlib.pyplot import figure, style, plot, ylabel, xlabel, legend, savefig
-print(f'Mem pyplot - {psutil.Process().memory_info().rss / (1024 * 1024)}')
+# print(f'Mem pyplot - {psutil.Process().memory_info().rss / (1024 * 1024)}')
 import pennylane as qml # big mems
-print(f'Mem pennylane - {psutil.Process().memory_info().rss / (1024 * 1024)}')
+# print(f'Mem pennylane - {psutil.Process().memory_info().rss / (1024 * 1024)}')
 from pennylane import numpy as np
 from pickle import dump
 from scipy import pi
@@ -16,18 +16,17 @@ from scipy import pi
 from VQC_ABC import VQC
 
 def main(ansatz, ansatz_save, params, events, train_size, n_ansatz_qubits, n_latent_qubits, rng_seed, ix, gen, start_time, n_shots):
-    # os.environ["CUDA_VISIBLE_DEVICES"]="0"
-    time.sleep(ix)
-    with contextlib.redirect_stdout(None):
-        exec('import setGPU') # big mems
-    print(f'Mem setGPU - {psutil.Process().memory_info().rss / (1024 * 1024)}')
+    os.environ["CUDA_VISIBLE_DEVICES"]=f"{ix%8}"
+    # time.sleep(ix)
+    # with contextlib.redirect_stdout(None):
+    #     exec('import setGPU') # big mems
+    # print(f'Mem setGPU - {psutil.Process().memory_info().rss / (1024 * 1024)}')
     n_trash_qubits = n_ansatz_qubits - n_latent_qubits
     n_wires = n_ansatz_qubits + n_trash_qubits + 1
     swap_pattern = compute_swap_pattern(n_ansatz_qubits, n_latent_qubits, n_trash_qubits, n_wires)
     
     dev = qml.device('qulacs.simulator', wires=n_wires, gpu=True, shots=n_shots) # big mems
-    # dev = qml.device('default.qubit', wires=n_wires, shots=n_shots) # big mems
-    print(f'Mem qml device - {psutil.Process().memory_info().rss / (1024 * 1024)}')
+    # print(f'Mem qml device - {psutil.Process().memory_info().rss / (1024 * 1024)}')
     qnode = qml.QNode(circuit, dev, diff_method='best')
     
     config = {
@@ -99,8 +98,10 @@ def train(events, config):
 
         # iterating over all the training data
         for i in range(event_batch.shape[0]):
-            fub_stud = qml.metric_tensor(circuit, approx="block-diag")(theta, event=event_batch[i], config=config)
-            grads[i] = np.matmul(fub_stud, opt.compute_grad(circuit, (theta, event_batch[i], config), {})[0][0])
+            # fub_stud = qml.metric_tensor(circuit, approx="block-diag")(theta, event=event_batch[i], config=config)
+            # grads[i] = np.matmul(fub_stud, opt.compute_grad(circuit, (theta, event_batch[i], config), {})[0][0])
+            fub_stud = qml.metric_tensor(config['qnode'], approx="block-diag")(theta, event=event_batch[i], config=config)
+            grads[i] = np.matmul(fub_stud, opt.compute_grad(config['qnode'], (theta, event_batch[i], config), {})[0][0])
             costs[i] = circuit(theta, event=event_batch[i], config=config)
         if best_perf[0] > costs.mean(axis=0):
             best_perf[0] = costs.mean(axis=0)
@@ -140,6 +141,10 @@ def train(events, config):
     filepath_ansatz = os.path.join(destdir_ansatz, '%02d_%03dga_best%.e_data_ansatz' % (config['ix'], config['gen'], config['train_size']))
     with open(filepath_ansatz, "wb") as f:
         dump(config['ansatz_save'], f)
+    filepath_draw = os.path.join(destdir_ansatz, '%02d_%03dga_best%.e_draw_ansatz' % (config['ix'], config['gen'], config['train_size']))
+    ansatz_draw = qml.draw(config['qnode'], decimals=None, expansion_strategy='device')(theta, event=event_batch[0], config=config)
+    with open(filepath_draw, "w") as f:
+        f.write(ansatz_draw)
         
     destdir_curves = os.path.join(destdir, 'qml_curves')
     if not os.path.exists(destdir_curves):
