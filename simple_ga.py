@@ -1,4 +1,6 @@
+import copy
 import datetime
+import difflib
 import multiprocessing as mp
 import os
 import time
@@ -6,6 +8,7 @@ import time
 import h5py
 import numpy as np
 import pandas as pd
+import pennylane as qml
 import scipy as sp
 from matplotlib import pyplot as plt
 from numba import cuda
@@ -38,8 +41,12 @@ class Individual(GA_Individual):
         
         self.ansatz = []
         self.ansatz_qml = []
+        self.ansatz_draw = []
         self.params = []
+        
         self.generate() # Should this be done automatically?
+        self.convert_to_qml()
+        self.draw_ansatz()
         
     def __len__(self):
         return len(self.ansatz[0])
@@ -134,8 +141,21 @@ class Individual(GA_Individual):
                 elif len(k) > 2: # Assumes the 2-qubit gates have no parameters, which is not generally true
                     self.ansatz_qml.append(f"qml.broadcast(qml.{k}, wires={np.array(moment_dict[k]).flatten(order='C').tolist()}, pattern={moment_dict[k]})")
                     # change to allow for two-qubit gates with 1+ params
-            
-            
+                    
+    def ansatz_circuit(self, params, event=None, ansatz=None):
+        for m in ansatz:
+            exec(m)
+        return qml.expval(qml.PauliZ(wires=[self.n_qubits-1]))
+        
+    def draw_ansatz(self):
+        full_ansatz_draw = qml.draw(qml.QNode(self.ansatz_circuit, qml.device('default.qubit', wires=self.n_qubits, shots=1)), decimals=None, 
+                                    expansion_strategy='device')(self.params, event=[i for i in range(self.n_qubits)], ansatz=self.ansatz_qml)[:-2]
+        indices = [i for i, c in enumerate(full_ansatz_draw) if c == ':']
+        for _ in range(self.n_qubits):
+            self.ansatz_draw.append(full_ansatz_draw[:indices[1]-2][3:-2])
+            full_ansatz_draw = full_ansatz_draw[indices[1]-1:]
+    
+                    
 class Model(GA_Model):
     """
     Container for all the logic of the GA Model.
@@ -155,11 +175,12 @@ class Model(GA_Model):
         self.gates_arr = config['gates_arr']
         self.gates_probs = config['gates_probs']
         self.pop_size = config['pop_size']
+        self.init_pop_size = config['init_pop_size']
         self.n_winners = config['n_winners']
         self.n_mutations = config['n_mutations']
         self.n_mate_swaps = config['n_mate_swaps']
         self.n_steps = config['n_steps']
-        self.best_perf = [0, [], 0]
+        self.best_perf = [0, [], 0, str()]
         
         ### hyperparams for qae ###
         self.latent_qubits = config['latent_qubits']
@@ -174,30 +195,52 @@ class Model(GA_Model):
         
         self.population = []
         self.fitness_arr = []
-        for i in range(self.pop_size):
+        for _ in range(self.pop_size):
             self.population.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed))
             self.fitness_arr.append(0)
+    
+    def generate_initial_pop(self):
+        init_pop = []
+        for _ in range(self.init_pop_size):
+            init_pop.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed).ansatz_draw)
+        
+        seq_mat = difflib.SequenceMatcher(isjunk=lambda x: x in ' \t-', b='')
+        distance_scores_arr = []
+        selected_ixs = []
+        for _ in range(self.pop_size):
+            distance_scores = []
+            for j, individual in enumerate(init_pop):
+                if j in selected_ixs:
+                    continue
+                distance = 0.0
+                for i in range(self.n_qubits):
+                    seq_mat.set_seq1(individual[i])
+                    distance += 1 - seq_mat.ratio()
+                distance_scores.append(distance/self.n_qubits)
+            distance_scores_arr.append(copy.deepcopy(distance_scores))
+            selected_ixs.append(np.where(distance_scores == np.amax(np.mean(distance_scores_arr))[0][0]))
+            self.population.append(copy.deepcopy(init_pop[selected_ixs[-1]]))
+            seq_mat.set_seq2(init_pop[selected_ixs[-1]])
+            
+        print(len(self.population))
     
     def evolve(self):
         """
         Evolves the GA.
         """
         step = 0
-        results = {
-            'full_population': None,
-            'full_fitness': None,
-            'best_ansatz': None,
-            'best_fitness': 0.0,
-            'best_fitness_gen': 0,
-        }
+        results = {}
         while True:
             print(f'GA iteration {step}')
             self.fitness_arr = [0 for i in self.population]
             self.evaluate_fitness(step)
             
             results['full_population'] = [i.ansatz for i in self.population]
+            results['full_drawn_population'] = [i.ansatz_draw for i in self.population]
             results['full_fitness'] = [i.tolist() for i in self.fitness_arr]
+            results['fitness_stats'] = f'Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}'
             results['best_ansatz'] = self.best_perf[1]
+            results['best_drawn_ansatz'] = self.best_perf[3]
             results['best_fitness'] = self.best_perf[0]
             results['best_fitness_gen'] = self.best_perf[2]
             
@@ -240,8 +283,8 @@ class Model(GA_Model):
         if self.best_perf[0] < np.amax(self.fitness_arr):
             print('!! IMPROVED PERFORMANCE !!')
             self.best_perf[0] = np.amax(self.fitness_arr)
-            # fix memory bug
-            self.best_perf[1] = self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]].ansatz
+            self.best_perf[1] = copy.deepcopy(self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]].ansatz)
+            self.best_perf[3] = copy.deepcopy(self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]].ansatz_draw)
             self.best_perf[2] = gen
     
     def select(self):
