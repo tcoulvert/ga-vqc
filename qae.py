@@ -5,7 +5,6 @@ import os
 import time
 
 import matplotlib.pyplot as plt # big mems
-# from matplotlib.pyplot import figure, style, plot, ylabel, xlabel, legend, savefig
 # print(f'Mem pyplot - {psutil.Process().memory_info().rss / (1024 * 1024)}')
 import pennylane as qml # big mems
 # print(f'Mem pennylane - {psutil.Process().memory_info().rss / (1024 * 1024)}')

@@ -180,7 +180,7 @@ class Model(GA_Model):
         self.n_mutations = config['n_mutations']
         self.n_mate_swaps = config['n_mate_swaps']
         self.n_steps = config['n_steps']
-        self.best_perf = [0, [], 0, str()]
+        self.best_perf = [0, [], 0, str()] # change to dict
         
         ### hyperparams for qae ###
         self.latent_qubits = config['latent_qubits']
@@ -194,35 +194,44 @@ class Model(GA_Model):
         self.rng = np.random.default_rng(seed=self.rng_seed)
         
         self.population = []
-        self.fitness_arr = []
-        for _ in range(self.pop_size):
-            self.population.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed))
-            self.fitness_arr.append(0)
+        self.fitness_arr = [0 for i in range(self.pop_size)]
+        self.generate_initial_pop()
     
     def generate_initial_pop(self):
+        start_time = time.time()
         init_pop = []
         for _ in range(self.init_pop_size):
-            init_pop.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed).ansatz_draw)
+            init_pop.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed))
         
-        seq_mat = difflib.SequenceMatcher(isjunk=lambda x: x in ' \t-', b='')
-        distance_scores_arr = []
-        selected_ixs = []
+        seq_mat = difflib.SequenceMatcher(isjunk=lambda x: x in ' -')
+        compare_arr = ['' for i in range(self.n_qubits)]
+        distances_arr = []
+        selected_ixs = set()
+        removed_ixs = set()
         for _ in range(self.pop_size):
-            distance_scores = []
+            distances = []
             for j, individual in enumerate(init_pop):
-                if j in selected_ixs:
+                if j in selected_ixs or j in removed_ixs:
+                    distances.append(0)
                     continue
-                distance = 0.0
+                if '' in individual:
+                    removed_ixs.add(j)
+                    continue
+                dist = 0.0
                 for i in range(self.n_qubits):
-                    seq_mat.set_seq1(individual[i])
-                    distance += 1 - seq_mat.ratio()
-                distance_scores.append(distance/self.n_qubits)
-            distance_scores_arr.append(copy.deepcopy(distance_scores))
-            selected_ixs.append(np.where(distance_scores == np.amax(np.mean(distance_scores_arr))[0][0]))
-            self.population.append(copy.deepcopy(init_pop[selected_ixs[-1]]))
-            seq_mat.set_seq2(init_pop[selected_ixs[-1]])
+                    seq_mat.set_seq2(compare_arr[i])
+                    seq_mat.set_seq1(individual.ansatz_draw[i])
+                    dist += 1 - seq_mat.ratio()
+                distances.append(dist/self.n_qubits)
             
-        print(len(self.population))
+            distances_arr.append(np.array(distances))
+            selected_ix = np.argmax(np.mean(distances_arr, axis=0))
+            selected_ixs.add(selected_ix)
+            self.population.append(init_pop[selected_ix])
+            compare_arr = init_pop[selected_ix].ansatz_draw
+        end_time = time.time()
+        exec_time = end_time-start_time
+        print(f'Initial generation/selection in {exec_time:.2f} seconds')
     
     def evolve(self):
         """
@@ -245,7 +254,6 @@ class Model(GA_Model):
             results['best_fitness_gen'] = self.best_perf[2]
             
             parents = self.select()
-            self.population = []
             self.mate(parents)
                 
             print(f'Best Fitness: {self.best_perf[0]}, Best ansatz: {self.best_perf[1]}')
@@ -268,6 +276,7 @@ class Model(GA_Model):
         args_arr = []
         for p in self.population:
             p.convert_to_qml()
+            p.draw_ansatz()
             event_sub = self.rng.choice(self.events, self.train_size, replace=False)
             args_arr.append((p.ansatz_qml, p.ansatz, p.params, event_sub, self.train_size, self.n_qubits, 
                              self.latent_qubits, self.rng_seed, ix, gen, self.start_time, self.n_shots))
@@ -283,8 +292,8 @@ class Model(GA_Model):
         if self.best_perf[0] < np.amax(self.fitness_arr):
             print('!! IMPROVED PERFORMANCE !!')
             self.best_perf[0] = np.amax(self.fitness_arr)
-            self.best_perf[1] = copy.deepcopy(self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]].ansatz)
-            self.best_perf[3] = copy.deepcopy(self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]].ansatz_draw)
+            self.best_perf[1] = copy.deepcopy(self.population[np.argmax(self.fitness_arr)].ansatz)
+            self.best_perf[3] = copy.deepcopy(self.population[np.argmax(self.fitness_arr)].ansatz_draw)
             self.best_perf[2] = gen
     
     def select(self):
@@ -293,10 +302,12 @@ class Model(GA_Model):
         """
         winner_arr = []
         for i in range(self.n_winners):
-            winner = self.population[np.where(self.fitness_arr == np.amax(self.fitness_arr))[0][0]]
+            winner_ix = np.argmax(self.fitness_arr)
+            winner = self.population[winner_ix]
             winner_arr.append(winner)
-            self.fitness_arr.remove(np.amax(self.fitness_arr))
+            self.fitness_arr.pop(winner_ix)
             
+        self.population = []
         return winner_arr
             
     def mate(self, parents):
