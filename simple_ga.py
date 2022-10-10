@@ -9,6 +9,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import pennylane as qml
+import psutil
 import scipy as sp
 from matplotlib import pyplot as plt
 from numba import cuda
@@ -97,7 +98,6 @@ class Individual(GA_Individual):
                     break
                     
                 if self.ansatz[j][i] == 0:
-                    # self.ansatz[j][i] = 'I'
                     self.ansatz[j][i] = self.rng.choice(self.gates_arr[:-1])
         
     def convert_to_qml(self):
@@ -148,12 +148,19 @@ class Individual(GA_Individual):
         return qml.expval(qml.PauliZ(wires=[self.n_qubits-1]))
         
     def draw_ansatz(self):
+        self.ansatz_draw = []
         full_ansatz_draw = qml.draw(qml.QNode(self.ansatz_circuit, qml.device('default.qubit', wires=self.n_qubits, shots=1)), decimals=None, 
-                                    expansion_strategy='device')(self.params, event=[i for i in range(self.n_qubits)], ansatz=self.ansatz_qml)[:-2]
+                                    expansion_strategy='device', show_all_wires=True)(self.params, event=[i for i in range(self.n_qubits)], 
+                                                                                      ansatz=self.ansatz_qml)[:-3]
         indices = [i for i, c in enumerate(full_ansatz_draw) if c == ':']
         for _ in range(self.n_qubits):
             self.ansatz_draw.append(full_ansatz_draw[:indices[1]-2][3:-2])
             full_ansatz_draw = full_ansatz_draw[indices[1]-1:]
+            
+    def add_moment(self):
+        j = self.rng.integers(self.n_moments)
+        self.ansatz.append(copy.deepcopy(self.ansatz[j]))
+        self.n_moments += 1
     
                     
 class Model(GA_Model):
@@ -169,18 +176,21 @@ class Model(GA_Model):
         """
         ### hyperparams for GA ###
         self.backend_type = config['backend_type']
+        self.max_concurrent = config['max_concurrent']
         
         self.n_qubits = config['n_qubits']
-        self.n_moments = config['n_moments']
+        self.max_moments = config['max_moments']
+        self.add_moment_prob = config['add_moment_prob']
         self.gates_arr = config['gates_arr']
         self.gates_probs = config['gates_probs']
         self.pop_size = config['pop_size']
         self.init_pop_size = config['init_pop_size']
+        self.n_new_individuals = config['n_new_individuals']
         self.n_winners = config['n_winners']
         self.n_mutations = config['n_mutations']
         self.n_mate_swaps = config['n_mate_swaps']
         self.n_steps = config['n_steps']
-        self.best_perf = [0, [], 0, str()] # change to dict
+        self.best_perf = [0, [], 0, str(), 0] # change to dict
         
         ### hyperparams for qae ###
         self.latent_qubits = config['latent_qubits']
@@ -198,24 +208,25 @@ class Model(GA_Model):
         self.generate_initial_pop()
     
     def generate_initial_pop(self):
+        """
+        Generates the initial population by making many more individuals than needed, and pruning down to pop_size by taking maximally different individuals.
+        
+        TODO: Change to a custom distance calculation that can be stored in each ansatz?
+        """
         start_time = time.time()
         init_pop = []
         for _ in range(self.init_pop_size):
-            init_pop.append(Individual(self.n_qubits, self.n_moments, self.gates_arr, self.gates_probs, self.rng_seed))
+            init_pop.append(Individual(self.n_qubits, self.rng.integers(1, self.max_moments), self.gates_arr, self.gates_probs, self.rng_seed))
         
         seq_mat = difflib.SequenceMatcher(isjunk=lambda x: x in ' -')
         compare_arr = ['' for i in range(self.n_qubits)]
         distances_arr = []
         selected_ixs = set()
-        removed_ixs = set()
         for _ in range(self.pop_size):
             distances = []
             for j, individual in enumerate(init_pop):
-                if j in selected_ixs or j in removed_ixs:
+                if j in selected_ixs:
                     distances.append(0)
-                    continue
-                if '' in individual:
-                    removed_ixs.add(j)
                     continue
                 dist = 0.0
                 for i in range(self.n_qubits):
@@ -238,27 +249,22 @@ class Model(GA_Model):
         Evolves the GA.
         """
         step = 0
-        results = {}
         while True:
             print(f'GA iteration {step}')
+            print(f'Mem GA process - {psutil.Process().memory_info().rss / (1024 * 1024)}')
             self.fitness_arr = [0 for i in self.population]
             self.evaluate_fitness(step)
             
-            results['full_population'] = [i.ansatz for i in self.population]
-            results['full_drawn_population'] = [i.ansatz_draw for i in self.population]
-            results['full_fitness'] = [i.tolist() for i in self.fitness_arr]
-            results['fitness_stats'] = f'Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}'
-            results['best_ansatz'] = self.best_perf[1]
-            results['best_drawn_ansatz'] = self.best_perf[3]
-            results['best_fitness'] = self.best_perf[0]
-            results['best_fitness_gen'] = self.best_perf[2]
+            results = self.make_results()
             
             parents = self.select()
             self.mate(parents)
+            self.immigrate()
+            self.check_max_moments()
                 
             print(f'Best Fitness: {self.best_perf[0]}, Best ansatz: {self.best_perf[1]}')
             
-            if step > 20 and step%self.n_steps == 0:
+            if step > 20:
                 if (step - self.best_perf[2]) > self.n_steps:
                     break
             make_results_json(results, self.start_time, self.script_path, step)
@@ -272,6 +278,7 @@ class Model(GA_Model):
         TODO: change to do per given ansatz (so we don't have to train every ansatz).
             -> make so fitness_arr can be shorter than population
         """
+        self.fitness_arr = []
         ix = 0
         args_arr = []
         for p in self.population:
@@ -283,8 +290,9 @@ class Model(GA_Model):
             ix += 1
         
         start_time = time.time()
-        with mp.get_context("spawn").Pool(processes=len(args_arr)) as pool:
-            self.fitness_arr = pool.starmap(main, args_arr)
+        for i in range(self.pop_size//self.max_concurrent):
+            with mp.get_context("spawn").Pool(processes=len(args_arr)) as pool:
+                self.fitness_arr.extend(pool.starmap(main, args_arr[i*self.max_concurrent:(i+1)*self.max_concurrent]))
         end_time = time.time()
         exec_time = end_time-start_time
         print(f'QML Optimization in {exec_time:.2f} seconds')
@@ -295,6 +303,21 @@ class Model(GA_Model):
             self.best_perf[1] = copy.deepcopy(self.population[np.argmax(self.fitness_arr)].ansatz)
             self.best_perf[3] = copy.deepcopy(self.population[np.argmax(self.fitness_arr)].ansatz_draw)
             self.best_perf[2] = gen
+            self.best_perf[4] = np.argmax(self.fitness_arr)
+            
+    def make_results(self):
+        results = {
+            'full_population': [i.ansatz for i in self.population],
+            'full_drawn_population': [i.ansatz_draw for i in self.population],
+            'full_fitness': [i.tolist() for i in self.fitness_arr],
+            'fitness_stats': f'Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}',
+            'best_ansatz': self.best_perf[1],
+            'best_drawn_ansatz': self.best_perf[3],
+            'best_fitness': self.best_perf[0],
+            'best_fitness_gen': self.best_perf[2],
+            'best_fitness_ix': self.best_perf[4],
+        }
+        return results
     
     def select(self):
         """
@@ -319,7 +342,7 @@ class Model(GA_Model):
         children_arr = []
         swap_ixs = []
         parents = self.deep_permutation(parents)
-        while len(parents) < self.pop_size:
+        while len(parents) < self.pop_size-self.n_new_individuals:
             parents.extend(self.deep_permutation(parents))
             
         # Create index pairings for swapping
@@ -333,7 +356,7 @@ class Model(GA_Model):
         i_set = set()
         for swap_ix in swap_ixs: # set up for odd number of parents
             children = [parents[swap_ix[0]], parents[swap_ix[1]]]
-            j0, j1 = self.rng.integers(len(children[0])), self.rng.integers(len(children[1]))
+            j0, j1 = self.rng.integers(children[0].n_moments), self.rng.integers(children[1].n_moments)
             i0 = i1 = self.rng.integers(self.n_qubits)
 
             i_set.add(i0)
@@ -359,7 +382,7 @@ class Model(GA_Model):
             children_arr.extend(children)
             
         for child in children_arr:
-            if len(self.population) < self.pop_size:
+            if len(self.population) < self.pop_size-self.n_new_individuals:
                 self.mutate(child)
         
     def deep_permutation(self, arr):
@@ -378,7 +401,11 @@ class Model(GA_Model):
         """
         for _ in range(self.n_mutations):
             double_swap_flag = 0
-            j = self.rng.integers(self.n_moments)
+            if ansatz.n_moments < self.max_moments and self.rng.random() < self.add_moment_prob:
+                ansatz.add_moment()
+                j = ansatz.n_moments - 1
+            else:
+                j = self.rng.integers(ansatz.n_moments)
             i = self.rng.integers(self.n_qubits)
             k = self.rng.choice(self.gates_arr, p=self.gates_probs)
 
@@ -411,3 +438,21 @@ class Model(GA_Model):
                     break
 
         self.population.append(ansatz)
+        
+    def immigrate(self):
+        """
+        Adds in new individuals with every generation, in order to keep up the overall population diversity.
+        """
+        for _ in range(self.n_new_individuals):
+            self.population.append(Individual(self.n_qubits, self.rng.integers(self.max_moments), self.gates_arr, self.gates_probs, self.rng_seed))
+            
+    def check_max_moments(self):
+        """
+        Checks if many of the ansatz are 'full' with respect to max_moments, and if so it raises the ceiling
+        """
+        count = 0
+        for ansatz in self.population:
+            if ansatz.n_moments == self.max_moments:
+                count += 1
+        if count/self.pop_size > 0.8:
+            self.max_moments += 10

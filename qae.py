@@ -1,9 +1,10 @@
-import psutil
-# print(f'Mem initial - {psutil.Process().memory_info().rss / (1024 * 1024)}')
 import contextlib
 import os
+import resource
 import time
 
+import psutil
+# print(f'Mem initial - {psutil.Process().memory_info().rss / (1024 * 1024)}')
 import matplotlib.pyplot as plt # big mems
 # print(f'Mem pyplot - {psutil.Process().memory_info().rss / (1024 * 1024)}')
 import pennylane as qml # big mems
@@ -11,11 +12,13 @@ import pennylane as qml # big mems
 from pennylane import numpy as np
 from pickle import dump
 from scipy import pi
+from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.preprocessing import MinMaxScaler
 
 from VQC_ABC import VQC
 
 def main(ansatz, ansatz_save, params, events, train_size, n_ansatz_qubits, n_latent_qubits, rng_seed, ix, gen, start_time, n_shots):
-    os.environ["CUDA_VISIBLE_DEVICES"]=f"{ix%8}"
+    os.environ["CUDA_VISIBLE_DEVICES"]=f"{(ix+2)%8}"
     # time.sleep(ix)
     # with contextlib.redirect_stdout(None):
     #     exec('import setGPU') # big mems
@@ -28,6 +31,8 @@ def main(ansatz, ansatz_save, params, events, train_size, n_ansatz_qubits, n_lat
     # print(f'Mem qml device - {psutil.Process().memory_info().rss / (1024 * 1024)}')
     qnode = qml.QNode(circuit, dev, diff_method='best')
     
+    print(ansatz_save)
+    print(params)
     config = {
         'qnode': qnode,
         'ansatz': ansatz,
@@ -84,6 +89,8 @@ def train(events, config):
     stop_check_factor = 40
     step_size_factor = 0
     theta = pi * rng.random(size=np.shape(np.array(config['params'])), requires_grad=True)
+    print('theta 1')
+    print(theta)
     event_sub = rng.choice(events, config['train_size'], replace=False)
     step = 0
     while True:
@@ -97,8 +104,6 @@ def train(events, config):
 
         # iterating over all the training data
         for i in range(event_batch.shape[0]):
-            # fub_stud = qml.metric_tensor(circuit, approx="block-diag")(theta, event=event_batch[i], config=config)
-            # grads[i] = np.matmul(fub_stud, opt.compute_grad(circuit, (theta, event_batch[i], config), {})[0][0])
             fub_stud = qml.metric_tensor(config['qnode'], approx="block-diag")(theta, event=event_batch[i], config=config)
             grads[i] = np.matmul(fub_stud, opt.compute_grad(config['qnode'], (theta, event_batch[i], config), {})[0][0])
             costs[i] = circuit(theta, event=event_batch[i], config=config)
@@ -119,6 +124,14 @@ def train(events, config):
                 stop_check_factor = step + 20
                 if step_size_factor < -5:
                     break
+                    
+        if step == 0:
+            print('theta 2')
+            print(theta)
+            # print(type(theta))
+            # print(costs)
+            # print(type(costs))
+            # print(type(costs[0]))
         step += 1
     
     # big mems
@@ -156,7 +169,64 @@ def train(events, config):
     plt.xlabel("Optimization steps")
     plt.legend()
     plt.savefig(filepath_curves)
-
+    
     # big mems
     # print(f'Mem saved files - {psutil.Process().memory_info().rss / (1024 * 1024)}')
-    return 1-(best_perf[0]+np.mean(qng_cost, axis=0))
+    if config['ix'] == 0:
+        print(f'Mem qml final - {psutil.Process().memory_info().rss / (1024 * 1024)}')
+    # return 1-(best_perf[0]+np.mean(qng_cost, axis=0))
+    # return compute_auroc(best_perf[1], config)
+    # return compute_auroc(filepath_thetas, config)
+    return 1-np.sqrt(best_perf[0]**2)
+
+def compute_auroc(filepath_thetas, config):
+    f_ix = filepath_thetas.find('qae_runs')
+    print(filepath_thetas + '.npy')
+    print(filepath_thetas[f_ix:] + '.npy')
+    opt_theta = np.load(filepath_thetas[f_ix:] + '.npy')
+    # print(opt_theta)
+    # print(type(opt_theta))
+    # print(type(opt_theta[0]))
+    
+    events_bb1 = np.load('10k_dijet_bb1.npy', requires_grad=False)
+    # print(events_bb1)
+    # print(type(events_bb1))
+    # print(type(events_bb1[0]))
+    # print(type(events_bb1[0][0]))
+    classes = np.load('10k_dijet_bb1_class.npy', requires_grad=False)
+    # print(events_bb1)
+    # print(classes)
+    scaler = MinMaxScaler(feature_range=(0, pi))
+    events_bb1 = scaler.fit_transform(events_bb1)
+    
+    f = open('events_LHCO2020_BlackBox1.masterkey', 'r')
+    event_classes = np.genfromtxt(f, delimiter=',')
+    event_class = event_classes[classes.tolist()]
+    
+    cost = []
+    for i in range(np.size(events_bb1, axis=0)):
+        if i == 0:
+            print(opt_theta)
+            print(circuit(opt_theta, event=events_bb1[i, :], config=config))
+            print(type(circuit(opt_theta, event=events_bb1[i, :], config=config)))
+            print(events_bb1[i, :])
+            print(config)
+        cost.append(circuit(opt_theta, event=events_bb1[i, :], config=config))
+
+    # print(cost)
+    cost = np.array(cost, requires_grad=False)
+    auroc = roc_auc_score(event_class, cost)
+    fpr, tpr, thresholds = roc_curve(event_class, cost)
+    bkg_rejec = 1 - fpr
+    
+    filepath_curves = os.path.join(destdir_curves, "%02d_%03dga_roc_bb1-%d_data.pdf" % (config['ix'], config['gen'], config['train_size']))
+    plt.figure(config['train_size'])
+    plt.style.use("seaborn")
+    plt.plot(bkg_rejec, tpr, label=f'AUROC - {auroc}')
+    plt.title('ROC on BB1 w/ GA Ansatz')
+    plt.xlabel('Bkg. Rejection')
+    plt.ylabel('Sig.  Acceptance')
+    plt.legend()
+    plt.savefig(filepath_curves)
+    
+    return auroc
