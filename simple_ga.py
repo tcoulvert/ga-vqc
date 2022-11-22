@@ -112,6 +112,7 @@ class Individual(GA_Individual):
                  'CNOT': []}
         """
         self.ansatz_qml = []
+        self.params = []
         for j in range(len(self.ansatz)):
             moment_dict = {i: list() for i in self.gates_arr}
             stored_i = []
@@ -149,9 +150,7 @@ class Individual(GA_Individual):
         
     def draw_ansatz(self):
         self.ansatz_draw = []
-        full_ansatz_draw = qml.draw(qml.QNode(self.ansatz_circuit, qml.device('default.qubit', wires=self.n_qubits, shots=1)), decimals=None, 
-                                    expansion_strategy='device', show_all_wires=True)(self.params, event=[i for i in range(self.n_qubits)], 
-                                                                                      ansatz=self.ansatz_qml)[:-3]
+        full_ansatz_draw = qml.draw(qml.QNode(self.ansatz_circuit, qml.device('default.qubit', wires=self.n_qubits, shots=1)), decimals=None, expansion_strategy='device', show_all_wires=True)(self.params, event=[i for i in range(self.n_qubits)], ansatz=self.ansatz_qml)[:-3]
         indices = [i for i, c in enumerate(full_ansatz_draw) if c == ':']
         for _ in range(self.n_qubits):
             self.ansatz_draw.append(full_ansatz_draw[:indices[1]-2][3:-2])
@@ -313,9 +312,9 @@ class Model(GA_Model):
             'fitness_stats': f'Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}',
             'best_ansatz': self.best_perf[1],
             'best_drawn_ansatz': self.best_perf[3],
-            'best_fitness': self.best_perf[0],
+            'best_fitness': self.best_perf[0].item(),
             'best_fitness_gen': self.best_perf[2],
-            'best_fitness_ix': self.best_perf[4],
+            'best_fitness_ix': self.best_perf[4].item(),
         }
         return results
     

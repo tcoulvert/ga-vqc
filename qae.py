@@ -31,8 +31,8 @@ def main(ansatz, ansatz_save, params, events, train_size, n_ansatz_qubits, n_lat
     # print(f'Mem qml device - {psutil.Process().memory_info().rss / (1024 * 1024)}')
     qnode = qml.QNode(circuit, dev, diff_method='best')
     
-    print(ansatz_save)
-    print(params)
+    # if ix%10 == 0:
+    #     print(ansatz_save)
     config = {
         'qnode': qnode,
         'ansatz': ansatz,
@@ -88,9 +88,9 @@ def train(events, config):
     stop_check = [[0,0], [0,0]]
     stop_check_factor = 40
     step_size_factor = 0
-    theta = pi * rng.random(size=np.shape(np.array(config['params'])), requires_grad=True)
-    print('theta 1')
-    print(theta)
+    theta = pi * rng.random(size=np.shape(config['params']), requires_grad=True)
+    # print('theta 1')
+    # print(theta)
     event_sub = rng.choice(events, config['train_size'], replace=False)
     step = 0
     while True:
@@ -107,6 +107,9 @@ def train(events, config):
             fub_stud = qml.metric_tensor(config['qnode'], approx="block-diag")(theta, event=event_batch[i], config=config)
             grads[i] = np.matmul(fub_stud, opt.compute_grad(config['qnode'], (theta, event_batch[i], config), {})[0][0])
             costs[i] = circuit(theta, event=event_batch[i], config=config)
+            if costs[i].item() < 0: # corrects for non-normality of SWAP test, in order to avoid over-training
+                grads[i] *= -1
+                costs[i] *= -1
         if best_perf[0] > costs.mean(axis=0):
             best_perf[0] = costs.mean(axis=0)
             best_perf[1] = theta
@@ -125,13 +128,6 @@ def train(events, config):
                 if step_size_factor < -5:
                     break
                     
-        if step == 0:
-            print('theta 2')
-            print(theta)
-            # print(type(theta))
-            # print(costs)
-            # print(type(costs))
-            # print(type(costs[0]))
         step += 1
     
     # big mems
@@ -150,9 +146,14 @@ def train(events, config):
     destdir_ansatz = os.path.join(destdir, 'opt_ansatz')
     if not os.path.exists(destdir_ansatz):
         os.makedirs(destdir_ansatz)
+    # Make ansatz represented in list-of-dicts-of-qubits
     filepath_ansatz = os.path.join(destdir_ansatz, '%02d_%03dga_best%.e_data_ansatz' % (config['ix'], config['gen'], config['train_size']))
     with open(filepath_ansatz, "wb") as f:
         dump(config['ansatz_save'], f)
+    # Make ansatz to run using loop
+    filepath_run = os.path.join(destdir_ansatz, '%02d_%03dga_best%.e_run_ansatz' % (config['ix'], config['gen'], config['train_size']))
+    np.save(filepath_run, config['ansatz'])
+    # Make ansatz to draw in output files
     filepath_draw = os.path.join(destdir_ansatz, '%02d_%03dga_best%.e_draw_ansatz' % (config['ix'], config['gen'], config['train_size']))
     ansatz_draw = qml.draw(config['qnode'], decimals=None, expansion_strategy='device')(theta, event=event_batch[0], config=config)
     with open(filepath_draw, "w") as f:
@@ -174,10 +175,10 @@ def train(events, config):
     # print(f'Mem saved files - {psutil.Process().memory_info().rss / (1024 * 1024)}')
     if config['ix'] == 0:
         print(f'Mem qml final - {psutil.Process().memory_info().rss / (1024 * 1024)}')
-    # return 1-(best_perf[0]+np.mean(qng_cost, axis=0))
     # return compute_auroc(best_perf[1], config)
     # return compute_auroc(filepath_thetas, config)
-    return 1-np.sqrt(best_perf[0]**2)
+    # return 1-np.sqrt(best_perf[0]**2)
+    return 1-best_perf[0]
 
 def compute_auroc(filepath_thetas, config):
     f_ix = filepath_thetas.find('qae_runs')
@@ -205,12 +206,12 @@ def compute_auroc(filepath_thetas, config):
     
     cost = []
     for i in range(np.size(events_bb1, axis=0)):
-        if i == 0:
-            print(opt_theta)
-            print(circuit(opt_theta, event=events_bb1[i, :], config=config))
-            print(type(circuit(opt_theta, event=events_bb1[i, :], config=config)))
-            print(events_bb1[i, :])
-            print(config)
+        # if i == 0:
+        #     print(opt_theta)
+        #     print(circuit(opt_theta, event=events_bb1[i, :], config=config))
+        #     print(type(circuit(opt_theta, event=events_bb1[i, :], config=config)))
+        #     print(events_bb1[i, :])
+        #     print(config)
         cost.append(circuit(opt_theta, event=events_bb1[i, :], config=config))
 
     # print(cost)
