@@ -1,12 +1,10 @@
 # GA for VQC Ansatz Search
-Quantum Adiabatic Machine Learning with Zooming IMproved. This is a supervised ML algorithm used to train a Binary Classifier on D-Wave's Quantum Annealers. The library has been set up to be compatible with Scikit-Learn's data representation. The algortihm is intended to be generalizable to any Binary ML problem.
 
-In order to run the program you'll need D-Wave credentials, these can be obtained at https://cloud.dwavesys.com/leap/signup/. You'll need a github account in order to sign up. This account will give you the "endpoint_url" and "account_token" referenced below.
 
 ## Installation
 Run the following to install:
 ```bash
-$ pip install qamlzim
+$ pip install ga_vqc
 ```
 
 ## Contributors
