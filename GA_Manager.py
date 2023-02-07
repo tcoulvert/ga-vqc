@@ -14,6 +14,6 @@ def backend(config):
         # return .advanced_ga.Model(config)
         pass
     else:
-        raise GA_Support.UnsupportedBackendDecorator(backend_type)
+        raise GA_Support.UnsupportedBackendDecorator(config['backend_type'])
     
     

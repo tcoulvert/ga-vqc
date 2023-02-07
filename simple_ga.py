@@ -17,7 +17,6 @@ from sklearn.preprocessing import MinMaxScaler
 
 from GA_ABC import GA_Individual, GA_Model
 from GA_Support import make_results_json
-from qae import main
 
 
 class Individual(GA_Individual):
@@ -175,6 +174,7 @@ class Model(GA_Model):
         """
         ### hyperparams for GA ###
         self.backend_type = config['backend_type']
+        self.vqc = config['vqc']
         self.max_concurrent = config['max_concurrent']
         
         self.n_qubits = config['n_qubits']
@@ -291,7 +291,7 @@ class Model(GA_Model):
         start_time = time.time()
         for i in range(self.pop_size//self.max_concurrent):
             with mp.get_context("spawn").Pool(processes=len(args_arr)) as pool:
-                self.fitness_arr.extend(pool.starmap(main, args_arr[i*self.max_concurrent:(i+1)*self.max_concurrent]))
+                self.fitness_arr.extend(pool.starmap(self.vqc, args_arr[i*self.max_concurrent:(i+1)*self.max_concurrent]))
         end_time = time.time()
         exec_time = end_time-start_time
         print(f'QML Optimization in {exec_time:.2f} seconds')
