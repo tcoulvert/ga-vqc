@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="ga_vqc",
-    version="0.0.1",
+    version="0.0.2",
     description="Genetic Algorithm for VQC ansatz search.",
     packages=find_packages(include=["ga_vqc"]),
     classifiers=[
@@ -16,10 +16,9 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "numpy >= 1.20.3",
+        "matplotlib >= 3.7.1" "numpy >= 1.20.3",
+        "pandas >= 1.5.3",
         "scikit_learn >= 1.0.1",
-        "scipy >= 1.7.1",
-        "dwave-ocean-sdk >= 4.2.0",
     ],
     extras_require={
         "dev": [

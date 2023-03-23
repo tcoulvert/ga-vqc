@@ -24,7 +24,7 @@ config = {
 }
 
 # Create the GA with the given hyperparameters
-ga = gav.backend(config)
+ga = gav.setup(config)
 
 # Evolve the GA and search for the best ansatz
 ga.evolve()
