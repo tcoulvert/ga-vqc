@@ -16,7 +16,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "matplotlib >= 3.7.1" "numpy >= 1.20.3",
+        "matplotlib >= 3.7.1",
+        "numpy >= 1.20.3",
         "pandas >= 1.5.3",
         "scikit_learn >= 1.0.1",
     ],
