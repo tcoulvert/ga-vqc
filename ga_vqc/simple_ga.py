@@ -215,6 +215,7 @@ class Model(GA_Model):
         self.n_shots = config["n_shots"]
         self.events = config["events"]
         self.train_size = config["train_size"]
+        self.batch_size = config["batch_size"]
 
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.script_path = os.path.dirname(os.path.realpath(__file__))
@@ -327,6 +328,7 @@ class Model(GA_Model):
                     p.params,
                     event_sub,
                     self.train_size,
+                    self.batch_size,
                     self.n_qubits,
                     self.latent_qubits,
                     self.rng_seed,
