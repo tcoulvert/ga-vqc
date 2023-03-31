@@ -5,14 +5,12 @@ import multiprocessing as mp
 import os
 import time
 
-import h5py
 import numpy as np
 import pandas as pd
 import pennylane as qml
 import psutil
 import scipy as sp
 from matplotlib import pyplot as plt
-from numba import cuda
 from sklearn.preprocessing import MinMaxScaler
 
 from .GA_ABC import GA_Individual, GA_Model
