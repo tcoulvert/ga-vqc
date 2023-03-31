@@ -341,10 +341,7 @@ class Model(GA_Model):
                     self.n_shots,
                 )
             )
-            print(len(args_arr[ix]))
             ix += 1
-
-        print(args_arr[0])
 
         start_time = time.time()
         for i in range(self.pop_size // self.max_concurrent):

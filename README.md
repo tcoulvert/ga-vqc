@@ -5,7 +5,7 @@ This is a module to support Variational Quantum Circuits by optimizing the ansat
 ## Installation
 Run the following to install:
 ```bash
-$ pip install ga_vqc
+$ pip install ga-vqc
 ```
 
 ## Contributors
