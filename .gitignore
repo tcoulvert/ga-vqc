@@ -161,3 +161,6 @@ cython_debug/
 ### Finder ###
 # .DS_Store file used by Finder on MacOS
 .DS_*
+
+### output files ###
+ga_runs/

@@ -153,7 +153,12 @@ class Individual(GA_Individual):
 
     def ansatz_circuit(self, params, event=None, ansatz=None):
         for m in ansatz:
-            exec(m)
+            # exec(m)
+            try:
+                exec(m)
+            except:
+                print(m)
+                raise Exception("oopsies there's a problem")
         return qml.expval(qml.PauliZ(wires=[self.n_qubits - 1]))
 
     def draw_ansatz(self):
@@ -338,7 +343,10 @@ class Model(GA_Model):
                     self.n_shots,
                 )
             )
+            print(len(args_arr[ix]))
             ix += 1
+
+        print(args_arr[0])
 
         start_time = time.time()
         for i in range(self.pop_size // self.max_concurrent):
