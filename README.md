@@ -21,6 +21,7 @@ import ga_vqc as gav
 config = {
     'backend': 'simple',
     'vqc': main,
+    'vqc_config': {},
 }
 
 # Create the GA with the given hyperparameters

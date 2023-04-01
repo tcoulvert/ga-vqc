@@ -8,10 +8,9 @@ import time
 import numpy as np
 import pandas as pd
 import pennylane as qml
-import psutil
-import scipy as sp
-from matplotlib import pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
+# import scipy as sp
+# from matplotlib import pyplot as plt
+# from sklearn.preprocessing import MinMaxScaler
 
 from .GA_ABC import GA_Individual, GA_Model
 from .GA_Support import make_results_json
@@ -38,7 +37,7 @@ class Individual(GA_Individual):
         self.gates_probs = gates_probs
         self.rng = np.random.default_rng(seed=rng_seed)
 
-        self.ansatz = []
+        self.ansatz_dicts = []
         self.ansatz_qml = []
         self.ansatz_draw = []
         self.params = []
@@ -48,57 +47,57 @@ class Individual(GA_Individual):
         self.draw_ansatz()
 
     def __len__(self):
-        return len(self.ansatz[0])
+        return len(self.ansatz_dicts[0])
 
     def __getitem__(self, key):
         if type(key) is tuple:
-            return self.ansatz[int(key[0])][int(key[1])]
+            return self.ansatz_dicts[int(key[0])][int(key[1])]
         else:
-            return self.ansatz[int(key)]
+            return self.ansatz_dicts[int(key)]
 
     def __setitem__(self, key, value):
         """
         TODO: fix implementation (need to set whole moments?)
         """
         if type(key) is tuple:
-            self.ansatz[int(key[0])][int(key[1])] = value
+            self.ansatz_dicts[int(key[0])][int(key[1])] = value
         else:
-            self.ansatz[int(key)] = value
+            self.ansatz_dicts[int(key)] = value
 
     def __str__(self):
-        return str(self.ansatz)
+        return str(self.ansatz_dicts)
 
     def generate(self):
         """
         Generates the ansatz stochastically based on the other member variables.
         """
         for j in range(self.n_moments):
-            self.ansatz.append(dict.fromkeys(range(self.n_qubits), 0))
+            self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
             ix = self.rng.permutation(self.n_qubits)  # which qubit to pick first
             for i in ix:
-                if self.ansatz[j][i] != 0:
+                if self.ansatz_dicts[j][i] != 0:
                     continue
                 k = self.rng.choice(self.gates_arr, p=self.gates_probs)
 
                 # if k.find('_') < 0:
                 if k[0] != "C":
-                    self.ansatz[j][i] = k
+                    self.ansatz_dicts[j][i] = k
                     continue
 
                 q_p_arr = self.rng.permutation(
                     self.n_qubits
                 )  # qubit_pair_array for 2-qubit gates
                 for q_p in q_p_arr:
-                    if self.ansatz[j][q_p] != 0 or q_p == i:
+                    if self.ansatz_dicts[j][q_p] != 0 or q_p == i:
                         continue
 
                     direction = self.rng.permutation(["_C", "_T"])
-                    self.ansatz[j][i] = k + direction[0] + f"-{q_p}"
-                    self.ansatz[j][q_p] = k + direction[1] + f"-{i}"
+                    self.ansatz_dicts[j][i] = k + direction[0] + f"-{q_p}"
+                    self.ansatz_dicts[j][q_p] = k + direction[1] + f"-{i}"
                     break
 
-                if self.ansatz[j][i] == 0:
-                    self.ansatz[j][i] = self.rng.choice(self.gates_arr[:-1])
+                if self.ansatz_dicts[j][i] == 0:
+                    self.ansatz_dicts[j][i] = self.rng.choice(self.gates_arr[:-1])
 
     def convert_to_qml(self):
         """
@@ -113,23 +112,23 @@ class Individual(GA_Individual):
         """
         self.ansatz_qml = []
         self.params = []
-        for j in range(len(self.ansatz)):
+        for j in range(len(self.ansatz_dicts)):
             moment_dict = {i: list() for i in self.gates_arr}
             stored_i = []
             for i in range(self.n_qubits):
-                _ix = self.ansatz[j][i].find("_")
+                _ix = self.ansatz_dicts[j][i].find("_")
                 if _ix < 0:
-                    moment_dict[self.ansatz[j][i]].append(i)
+                    moment_dict[self.ansatz_dicts[j][i]].append(i)
                 else:
                     if i in stored_i:
                         continue
-                    _1ix = self.ansatz[j][i][_ix + 1]
-                    q_p = int(self.ansatz[j][i][-1])
+                    _1ix = self.ansatz_dicts[j][i][_ix + 1]
+                    q_p = int(self.ansatz_dicts[j][i][-1])
                     stored_i.append(q_p)
                     if _1ix == "C":
-                        moment_dict[self.ansatz[j][i][:_ix]].append([i, int(q_p)])
+                        moment_dict[self.ansatz_dicts[j][i][:_ix]].append([i, int(q_p)])
                     else:
-                        moment_dict[self.ansatz[j][i][:_ix]].append([int(q_p), i])
+                        moment_dict[self.ansatz_dicts[j][i][:_ix]].append([int(q_p), i])
 
             for k in moment_dict.keys():
                 if len(moment_dict[k]) == 0 or k == "I":  # add in identity gates?
@@ -149,8 +148,8 @@ class Individual(GA_Individual):
                     )
                     # change to allow for two-qubit gates with 1+ params
 
-    def ansatz_circuit(self, params, event=None, ansatz=None):
-        for m in ansatz:
+    def ansatz_circuit(self, params, event=None):
+        for m in self.ansatz_qml:
             # exec(m)
             try:
                 exec(m)
@@ -169,7 +168,7 @@ class Individual(GA_Individual):
             decimals=None,
             expansion_strategy="device",
             show_all_wires=True,
-        )(self.params, event=[i for i in range(self.n_qubits)], ansatz=self.ansatz_qml)[
+        )(self.params, event=[i for i in range(self.n_qubits)])[
             :-3
         ]
         indices = [i for i, c in enumerate(full_ansatz_draw) if c == ":"]
@@ -179,7 +178,7 @@ class Individual(GA_Individual):
 
     def add_moment(self):
         j = self.rng.integers(self.n_moments)
-        self.ansatz.append(copy.deepcopy(self.ansatz[j]))
+        self.ansatz_dicts.append(copy.deepcopy(self.ansatz_dicts[j]))
         self.n_moments += 1
 
 
@@ -213,17 +212,22 @@ class Model(GA_Model):
         self.n_steps = config["n_steps"]
         self.best_perf = [0, [], 0, str(), 0]  # change to dict
 
-        ### hyperparams for qae ###
-        self.latent_qubits = config["latent_qubits"]
-        self.n_shots = config["n_shots"]
-        self.events = config["events"]
-        self.train_size = config["train_size"]
-        self.batch_size = config["batch_size"]
-
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.script_path = os.path.dirname(os.path.realpath(__file__))
-        self.rng_seed = config["seed"]
+        self.ga_output_path = config['ga_output_path']
+        self.rng_seed = config["rng_seed"]
         self.rng = np.random.default_rng(seed=self.rng_seed)
+
+        ### hyperparams for qae ###
+        self.vqc_config = config["vqc_config"]
+        self.vqc_config["n_ansatz_qubits"] = self.n_qubits
+        self.vqc_config["start_time"] = self.start_time
+        # self.latent_qubits = config["latent_qubits"]
+        # self.n_shots = config["n_shots"]
+        # self.events = config["events"]
+        # self.batch_size = config["batch_size"]
+        # self.GPU = config['GPU']
+        # self.events_val = config['events_val']
+        # self.truth_val = config['truth_val']
 
         self.population = []
         self.fitness_arr = [0 for i in range(self.pop_size)]
@@ -281,9 +285,6 @@ class Model(GA_Model):
         step = 0
         while True:
             print(f"GA iteration {step}")
-            print(
-                f"Mem GA process - {psutil.Process().memory_info().rss / (1024 * 1024)}"
-            )
             self.fitness_arr = [0 for i in self.population]
             self.evaluate_fitness(step)
 
@@ -320,25 +321,19 @@ class Model(GA_Model):
         self.fitness_arr = []
         ix = 0
         args_arr = []
-        for p in self.population:
-            p.convert_to_qml()
-            p.draw_ansatz()
-            event_sub = self.rng.choice(self.events, self.train_size, replace=False)
+        for ansatz in self.population:
+            ansatz.convert_to_qml()
+            ansatz.draw_ansatz()
+            # event_sub = self.rng.choice(self.events, self.train_size, replace=False)
+            vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
+            vqc_config_ansatz['ansatz_dicts'] = ansatz.ansatz_dicts
+            vqc_config_ansatz['ansatz_qml'] = ansatz.ansatz_qml
+            vqc_config_ansatz['params'] = ansatz.params
+            vqc_config_ansatz['ix'] = ix
+            vqc_config_ansatz['gen'] = gen
             args_arr.append(
                 (
-                    p.ansatz_qml,
-                    p.ansatz,
-                    p.params,
-                    event_sub,
-                    self.train_size,
-                    self.batch_size,
-                    self.n_qubits,
-                    self.latent_qubits,
-                    self.rng_seed,
-                    ix,
-                    gen,
-                    self.start_time,
-                    self.n_shots,
+                    vqc_config_ansatz
                 )
             )
             ix += 1
@@ -362,7 +357,7 @@ class Model(GA_Model):
             print("!! IMPROVED PERFORMANCE !!")
             self.best_perf[0] = np.amax(self.fitness_arr)
             self.best_perf[1] = copy.deepcopy(
-                self.population[np.argmax(self.fitness_arr)].ansatz
+                self.population[np.argmax(self.fitness_arr)].ansatz_dicts
             )
             self.best_perf[3] = copy.deepcopy(
                 self.population[np.argmax(self.fitness_arr)].ansatz_draw
@@ -372,7 +367,7 @@ class Model(GA_Model):
 
     def make_results(self):
         results = {
-            "full_population": [i.ansatz for i in self.population],
+            "full_population": [i.ansatz_dicts for i in self.population],
             "full_drawn_population": [i.ansatz_draw for i in self.population],
             "full_fitness": [i.tolist() for i in self.fitness_arr],
             "fitness_stats": f"Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}",
