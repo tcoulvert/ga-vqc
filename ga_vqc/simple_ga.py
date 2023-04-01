@@ -525,7 +525,7 @@ class Model(GA_Model):
             self.population.append(
                 Individual(
                     self.n_qubits,
-                    self.rng.integers(self.max_moments),
+                    self.rng.integers(1, self.max_moments),
                     self.gates_arr,
                     self.gates_probs,
                     self.rng_seed,
