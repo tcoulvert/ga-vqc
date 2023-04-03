@@ -2,16 +2,10 @@ import copy
 import datetime
 import difflib
 import multiprocessing as mp
-import os
 import time
 
 import numpy as np
-import pandas as pd
 import pennylane as qml
-
-# import scipy as sp
-# from matplotlib import pyplot as plt
-# from sklearn.preprocessing import MinMaxScaler
 
 from .GA_ABC import GA_Individual, GA_Model
 from .GA_Support import make_results_json
@@ -208,8 +202,7 @@ class Model(GA_Model):
         self.n_winners = config["n_winners"]
         self.n_mutations = config["n_mutations"]
         self.n_mate_swaps = config["n_mate_swaps"]
-        self.n_steps = config["n_steps"]
-        # self.best_perf = [0, [], 0, str(), 0]  # change to dict
+        self.n_steps_patience = config["n_steps_patience"]
         self.best_perf = {
             "fitness": 0,
             "eval_metrics": [],
@@ -228,17 +221,10 @@ class Model(GA_Model):
         self.vqc_config = config["vqc_config"]
         self.vqc_config["n_ansatz_qubits"] = self.n_qubits
         self.vqc_config["start_time"] = self.start_time
-        # self.latent_qubits = config["latent_qubits"]
-        # self.n_shots = config["n_shots"]
-        # self.events = config["events"]
-        # self.batch_size = config["batch_size"]
-        # self.GPU = config['GPU']
-        # self.events_val = config['events_val']
-        # self.truth_val = config['truth_val']
 
         self.population = []
-        self.fitness_arr = [0 for i in range(self.pop_size)]
-        self.metrics_arr = []
+        self.fitness_arr = [0 for _ in range(self.pop_size)]
+        self.metrics_arr = [dict() for _ in range(self.pop_size)]
         self.generate_initial_pop()
 
     def generate_initial_pop(self):
@@ -253,7 +239,7 @@ class Model(GA_Model):
             init_pop.append(
                 Individual(
                     self.n_qubits,
-                    self.rng.integers(1, self.max_moments),
+                    self.rng.integers(1, self.max_moments + 1),
                     self.gates_arr,
                     self.gates_probs,
                     self.rng_seed,
@@ -304,18 +290,18 @@ class Model(GA_Model):
             self.check_max_moments()
 
             print(
-                f"Best Fitness: {self.best_perf[0]}, Best ansatz: {self.best_perf[1]}"
+                f"Best Fitness: {self.best_perf['fitness']}, Best ansatz: {self.best_perf['ansatz_dicts']}"
             )
 
             if step > 20:
-                if (step - self.best_perf[2]) > self.n_steps:
+                if (step - self.best_perf["generation"]) > self.n_steps_patience:
                     break
-            make_results_json(results, self.start_time, self.script_path, step)
+            make_results_json(results, self.start_time, self.ga_output_path, step)
             step += 1
         print(
             "filename is: ",
             make_results_json(
-                results, self.start_time, self.script_path, step, final_flag=True
+                results, self.start_time, self.ga_output_path, step, final_flag=True
             ),
         )
 
@@ -326,13 +312,11 @@ class Model(GA_Model):
         TODO: change to do per given ansatz (so we don't have to train every ansatz).
             -> make so fitness_arr can be shorter than population
         """
-        # self.fitness_arr = []
         ix = 0
         args_arr = []
         for ansatz in self.population:
             ansatz.convert_to_qml()
             ansatz.draw_ansatz()
-            # event_sub = self.rng.choice(self.events, self.train_size, replace=False)
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
             vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
             vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
@@ -356,12 +340,12 @@ class Model(GA_Model):
                 )
         for i in range(len(output_arr)):
             self.fitness_arr[i] = output_arr[i]["fitness_metric"]
-            self.metrics_arr[i] = output_arr[i]["eval_matrics"]
+            self.metrics_arr[i] = output_arr[i]["eval_metrics"]
         end_time = time.time()
         exec_time = end_time - start_time
         print(f"QML Optimization in {exec_time:.2f} seconds")
 
-        if self.best_perf[0] < np.amax(self.fitness_arr):
+        if self.best_perf["fitness"] < np.amax(self.fitness_arr):
             print("!! IMPROVED PERFORMANCE !!")
             self.best_perf["fitness"] = np.amax(self.fitness_arr).item()
             self.best_perf["eval_metrics"] = copy.deepcopy(
@@ -538,7 +522,7 @@ class Model(GA_Model):
             self.population.append(
                 Individual(
                     self.n_qubits,
-                    self.rng.integers(1, self.max_moments),
+                    self.rng.integers(1, self.max_moments + 1),
                     self.gates_arr,
                     self.gates_probs,
                     self.rng_seed,
