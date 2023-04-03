@@ -379,6 +379,10 @@ class Model(GA_Model):
             "best_fitness_gen": self.best_perf["generation"],
             "best_fitness_ix": self.best_perf["index"],
         }
+
+        for k, v in results.items():
+            print(f"Type of {k} = {type(v)}")
+
         return results
 
     def select(self):
