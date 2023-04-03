@@ -327,7 +327,6 @@ class Model(GA_Model):
             -> make so fitness_arr can be shorter than population
         """
         # self.fitness_arr = []
-        output_arr = []
         ix = 0
         args_arr = []
         for ansatz in self.population:
@@ -340,22 +339,23 @@ class Model(GA_Model):
             vqc_config_ansatz["params"] = ansatz.params
             vqc_config_ansatz["ix"] = ix
             vqc_config_ansatz["gen"] = gen
-            args_arr.append((vqc_config_ansatz))
+            args_arr.append(copy.deepcopy(vqc_config_ansatz))
             ix += 1
 
         start_time = time.time()
+        output_arr = []
         for i in range(self.pop_size // self.max_concurrent):
-            with mp.get_context("spawn").Pool(processes=len(args_arr)) as pool:
+            with mp.get_context("spawn").Pool(processes=self.max_concurrent) as pool:
                 output_arr.extend(
-                    pool.starmap(
+                    pool.map(
                         self.vqc,
                         args_arr[
                             i * self.max_concurrent : (i + 1) * self.max_concurrent
                         ],
                     )
                 )
-        for i in range(len(output_arr, axis=0)):
-            self.fitness_arr[i] = output_arr[i]["fitness_metric"].tolist()
+        for i in range(len(output_arr)):
+            self.fitness_arr[i] = output_arr[i]["fitness_metric"]
             self.metrics_arr[i] = output_arr[i]["eval_matrics"]
         end_time = time.time()
         exec_time = end_time - start_time
