@@ -8,6 +8,7 @@ import time
 import numpy as np
 import pandas as pd
 import pennylane as qml
+
 # import scipy as sp
 # from matplotlib import pyplot as plt
 # from sklearn.preprocessing import MinMaxScaler
@@ -168,9 +169,7 @@ class Individual(GA_Individual):
             decimals=None,
             expansion_strategy="device",
             show_all_wires=True,
-        )(self.params, event=[i for i in range(self.n_qubits)])[
-            :-3
-        ]
+        )(self.params, event=[i for i in range(self.n_qubits)])[:-3]
         indices = [i for i, c in enumerate(full_ansatz_draw) if c == ":"]
         for _ in range(self.n_qubits):
             self.ansatz_draw.append(full_ansatz_draw[: indices[1] - 2][3:-2])
@@ -210,10 +209,18 @@ class Model(GA_Model):
         self.n_mutations = config["n_mutations"]
         self.n_mate_swaps = config["n_mate_swaps"]
         self.n_steps = config["n_steps"]
-        self.best_perf = [0, [], 0, str(), 0]  # change to dict
+        # self.best_perf = [0, [], 0, str(), 0]  # change to dict
+        self.best_perf = {
+            "fitness": 0,
+            "eval_metrics": [],
+            "ansatz_dicts": [],
+            "ansatz_draw": str(),
+            "generation": 0,
+            "index": 0,
+        }
 
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.ga_output_path = config['ga_output_path']
+        self.ga_output_path = config["ga_output_path"]
         self.rng_seed = config["rng_seed"]
         self.rng = np.random.default_rng(seed=self.rng_seed)
 
@@ -231,6 +238,7 @@ class Model(GA_Model):
 
         self.population = []
         self.fitness_arr = [0 for i in range(self.pop_size)]
+        self.metrics_arr = []
         self.generate_initial_pop()
 
     def generate_initial_pop(self):
@@ -318,7 +326,8 @@ class Model(GA_Model):
         TODO: change to do per given ansatz (so we don't have to train every ansatz).
             -> make so fitness_arr can be shorter than population
         """
-        self.fitness_arr = []
+        # self.fitness_arr = []
+        output_arr = []
         ix = 0
         args_arr = []
         for ansatz in self.population:
@@ -326,22 +335,18 @@ class Model(GA_Model):
             ansatz.draw_ansatz()
             # event_sub = self.rng.choice(self.events, self.train_size, replace=False)
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
-            vqc_config_ansatz['ansatz_dicts'] = ansatz.ansatz_dicts
-            vqc_config_ansatz['ansatz_qml'] = ansatz.ansatz_qml
-            vqc_config_ansatz['params'] = ansatz.params
-            vqc_config_ansatz['ix'] = ix
-            vqc_config_ansatz['gen'] = gen
-            args_arr.append(
-                (
-                    vqc_config_ansatz
-                )
-            )
+            vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
+            vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
+            vqc_config_ansatz["params"] = ansatz.params
+            vqc_config_ansatz["ix"] = ix
+            vqc_config_ansatz["gen"] = gen
+            args_arr.append((vqc_config_ansatz))
             ix += 1
 
         start_time = time.time()
         for i in range(self.pop_size // self.max_concurrent):
             with mp.get_context("spawn").Pool(processes=len(args_arr)) as pool:
-                self.fitness_arr.extend(
+                output_arr.extend(
                     pool.starmap(
                         self.vqc,
                         args_arr[
@@ -349,33 +354,46 @@ class Model(GA_Model):
                         ],
                     )
                 )
+        for i in range(len(output_arr, axis=0)):
+            self.fitness_arr[i] = output_arr[i]["fitness_metric"].tolist()
+            self.metrics_arr[i] = output_arr[i]["eval_matrics"]
         end_time = time.time()
         exec_time = end_time - start_time
         print(f"QML Optimization in {exec_time:.2f} seconds")
 
         if self.best_perf[0] < np.amax(self.fitness_arr):
             print("!! IMPROVED PERFORMANCE !!")
-            self.best_perf[0] = np.amax(self.fitness_arr)
-            self.best_perf[1] = copy.deepcopy(
+            self.best_perf["fitness"] = np.amax(self.fitness_arr).item()
+            self.best_perf["eval_metrics"] = copy.deepcopy(
+                self.metrics_arr[np.argmax(self.fitness_arr)]
+            )
+            self.best_perf["ansatz_dicts"] = copy.deepcopy(
                 self.population[np.argmax(self.fitness_arr)].ansatz_dicts
             )
-            self.best_perf[3] = copy.deepcopy(
+            self.best_perf["ansatz_draw"] = copy.deepcopy(
                 self.population[np.argmax(self.fitness_arr)].ansatz_draw
             )
-            self.best_perf[2] = gen
-            self.best_perf[4] = np.argmax(self.fitness_arr)
+            self.best_perf["generation"] = gen
+            self.best_perf["index"] = np.argmax(self.fitness_arr).item()
 
     def make_results(self):
         results = {
             "full_population": [i.ansatz_dicts for i in self.population],
             "full_drawn_population": [i.ansatz_draw for i in self.population],
-            "full_fitness": [i.tolist() for i in self.fitness_arr],
+            "full_fitness": self.fitness_arr,
             "fitness_stats": f"Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}",
-            "best_ansatz": self.best_perf[1],
-            "best_drawn_ansatz": self.best_perf[3],
-            "best_fitness": self.best_perf[0].item(),
-            "best_fitness_gen": self.best_perf[2],
-            "best_fitness_ix": self.best_perf[4].item(),
+            "full_eval_metrics": self.metrics_arr,
+            "eval_metrics_stats": [
+                f"Avg {k}: {np.mean([i[k] for i in self.metrics_arr])}, "
+                + f"Std. Dev: {np.std([i[k] for i in self.metrics_arr])}"
+                for k in self.metrics_arr[0].keys()
+            ],
+            "best_ansatz": self.best_perf["ansatz_dicts"],
+            "best_drawn_ansatz": self.best_perf["ansatz_draw"],
+            "best_fitness": self.best_perf["fitness"],
+            "best_eval_metrics": self.best_perf["eval_metrics"],
+            "best_fitness_gen": self.best_perf["generation"],
+            "best_fitness_ix": self.best_perf["index"],
         }
         return results
 
