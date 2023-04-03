@@ -339,6 +339,8 @@ class Model(GA_Model):
                     )
                 )
         for i in range(len(output_arr)):
+            # Both the fitness metrics and eval_metrics must be JSON serializable -> (ie. 
+            # default python classes or have custom serialization)
             self.fitness_arr[i] = output_arr[i]["fitness_metric"]
             self.metrics_arr[i] = output_arr[i]["eval_metrics"]
         end_time = time.time()
@@ -379,9 +381,6 @@ class Model(GA_Model):
             "best_fitness_gen": self.best_perf["generation"],
             "best_fitness_ix": self.best_perf["index"],
         }
-
-        for k, v in results.items():
-            print(f"Type of {k} = {type(v)}")
 
         return results
 
