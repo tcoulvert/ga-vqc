@@ -62,6 +62,9 @@ class Individual(GA_Individual):
     def __str__(self):
         return str(self.ansatz_dicts)
 
+    def __repr__(self):
+        return self.__str__()
+
     def generate(self):
         """
         Generates the ansatz stochastically based on the other member variables.
@@ -170,6 +173,9 @@ class Individual(GA_Individual):
             full_ansatz_draw = full_ansatz_draw[indices[1] - 1 :]
 
     def add_moment(self):
+        """
+        TODO: change to randomly generate new moment?
+        """
         j = self.rng.integers(self.n_moments)
         self.ansatz_dicts.append(copy.deepcopy(self.ansatz_dicts[j]))
         self.n_moments += 1
@@ -423,6 +429,7 @@ class Model(GA_Model):
         i_set = set()
         for swap_ix in swap_ixs:  # set up for odd number of parents
             children = [parents[swap_ix[0]], parents[swap_ix[1]]]
+            print(f"Pre-mateswap ansatz: {[children]}")
             j0, j1 = self.rng.integers(children[0].n_moments), self.rng.integers(
                 children[1].n_moments
             )
@@ -448,6 +455,7 @@ class Model(GA_Model):
                 children[0][j0, i] = parents[swap_ix[1]][j1, i]
                 children[1][j1, i] = parents[swap_ix[0]][j0, i]
 
+            print(f"Post-mateswap ansatz: {children}")
             children_arr.extend(children)
 
         for child in children_arr:
@@ -467,7 +475,13 @@ class Model(GA_Model):
         Mutates a single ansatz by modifying n_mutations random qubit(s) at 1 random time each.
 
         TODO: add in functionality to add or remove moments from an ansatz
+
+        Variables
+            j: selected moment
+            i: selected qubit
+            k: selected gate
         """
+        print(f"Pre-mutate ansatz: {ansatz}")
         for _ in range(self.n_mutations):
             double_swap_flag = 0
             if (
@@ -475,9 +489,7 @@ class Model(GA_Model):
                 and self.rng.random() < self.add_moment_prob
             ):
                 ansatz.add_moment()
-                j = ansatz.n_moments - 1
-            else:
-                j = self.rng.integers(ansatz.n_moments)
+            j = self.rng.integers(ansatz.n_moments)
             i = self.rng.integers(self.n_qubits)
             k = self.rng.choice(self.gates_arr, p=self.gates_probs)
 
@@ -514,6 +526,8 @@ class Model(GA_Model):
                     ansatz[j][i] = k + direction[0] + f"-{q_p}"
                     ansatz[j][q_p] = k + direction[1] + f"-{i}"
                     break
+
+        print(f"Post-mutate ansatz: {ansatz}")
 
         self.population.append(ansatz)
 
