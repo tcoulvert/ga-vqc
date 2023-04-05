@@ -426,36 +426,70 @@ class Model(GA_Model):
                 )
 
         # Perform the swap with neighboring parents
-        i_set = set()
+        swap_set = set()
         for swap_ix in swap_ixs:  # set up for odd number of parents
-            children = [parents[swap_ix[0]], parents[swap_ix[1]]]
-            print(f"Pre-mateswap ansatz: {[children]}")
-            j0, j1 = self.rng.integers(children[0].n_moments), self.rng.integers(
-                children[1].n_moments
-            )
-            i0 = i1 = self.rng.integers(self.n_qubits)
+            children = [copy.deepcopy(parents[swap_ix[0]]), copy.deepcopy(parents[swap_ix[1]])]
+            moment_A = self.rng.integers(children[0].n_moments) 
+            moment_B = self.rng.integers(children[1].n_moments)
+            # children = {
+            #     "child_A": copy.deepcopy(parents[swap_ix[0]]), 
+            #     "child_B": copy.deepcopy(parents[swap_ix[1]])
+            # }
+            # print(f"Pre-mateswap ansatz: {children}")
+            # moment_A = self.rng.integers(children["child_A"].n_moments) 
+            # moment_B = self.rng.integers(children["child_B"].n_moments)
+            # qubit_A = qubit_B = self.rng.integers(self.n_qubits).item()
+            # swap_set.add(qubit_A)
 
-            i_set.add(i0)
-            while True:
-                i0_new = i1_new = -1
-                if children[0][j0, i0].find("_") > 0:
-                    i1_new = int(children[0][j0, i0][-1])
-                    i_set.add(i1_new)
-                if children[1][j1, i1].find("_") > 0:
-                    i0_new = int(children[1][j1, i1][-1])
-                    if i0_new == i1_new:
-                        break
-                    i_set.add(i0_new)
-                i0, i1 = i0_new, i1_new
 
-                if i0 < 0 or i1 < 0:
-                    break
+            # def check_gate(qubit_str):
+            #     if qubit_str.find("_") > 0:
+            #         return int(qubit_str[-1])
+            #     return -1
 
-            for i in i_set:
-                children[0][j0, i] = parents[swap_ix[1]][j1, i]
-                children[1][j1, i] = parents[swap_ix[0]][j0, i]
 
-            print(f"Post-mateswap ansatz: {children}")
+            # # USE RECURSION !!!!!!!!
+            # while True:
+            #     qubit_B_new = check_gate(
+            #         children["child_A"][moment_A, qubit_A]
+            #     )
+            #     qubit_A_new = check_gate(
+            #         children["child_B"][moment_B, qubit_B]
+            #     )
+
+            #     if qubit_A_new == -1:
+            #         if qubit_B_new == -1:
+            #             break
+            #         # need to check moment_B, qubit_A_new
+
+            #     if qubit_A_new == qubit_B_new:
+            #         swap_set.add(qubit_A_new)
+            #         break
+
+            #     i0_new = i1_new = -1
+            #     if children[0][moment_A, qubit_A].find("_") > 0:
+            #         i1_new = int(children[0][moment_A, qubit_A][-1])
+            #         swap_set.add(i1_new)
+            #     if children[1][moment_B, qubit_B].find("_") > 0:
+            #         i0_new = int(children[1][moment_B, qubit_B][-1])
+            #         if i0_new == i1_new:
+            #             break
+            #         swap_set.add(i0_new)
+            #     qubit_A, qubit_B = i0_new, i1_new
+
+            #     if qubit_A < 0 or qubit_B < 0:
+            #         break
+
+            # for i in swap_set:
+            #     children[0][moment_A, i] = parents[swap_ix[1]][moment_B, i]
+            #     children[1][moment_B, i] = parents[swap_ix[0]][moment_A, i]
+
+            # print(f"Post-mateswap ansatz: {children}")
+            # ADDED IN FOR MOMENT SWAP
+            # children["child_A"][moment_A] = parents[swap_ix[1]][moment_B]
+            # children["child_B"][moment_B] = parents[swap_ix[0]][moment_A]
+            children[0][moment_A] = parents[swap_ix[1]][moment_B]
+            children[1][moment_B] = parents[swap_ix[0]][moment_A]
             children_arr.extend(children)
 
         for child in children_arr:
@@ -481,7 +515,7 @@ class Model(GA_Model):
             i: selected qubit
             k: selected gate
         """
-        print(f"Pre-mutate ansatz: {ansatz}")
+        # print(f"Pre-mutate ansatz: {ansatz}")
         for _ in range(self.n_mutations):
             double_swap_flag = 0
             if (
@@ -527,7 +561,7 @@ class Model(GA_Model):
                     ansatz[j][q_p] = k + direction[1] + f"-{i}"
                     break
 
-        print(f"Post-mutate ansatz: {ansatz}")
+        # print(f"Post-mutate ansatz: {ansatz}")
 
         self.population.append(ansatz)
 
