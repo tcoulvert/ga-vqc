@@ -2,11 +2,14 @@ import copy
 import datetime
 import difflib
 import multiprocessing as mp
+import os
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pennylane as qml
 
+from .Distance import euclidian_distances, tsne
 from .GA_ABC import GA_Model
 from .GA_Support import make_results_json
 from .simple_Individual import Individual
@@ -201,6 +204,35 @@ class Model(GA_Model):
             self.best_perf["index"] = np.argmax(self.fitness_arr).item()
 
     def make_results(self):
+
+        distances_from_best = euclidian_distances(self.best_perf["ansatz_dicts"], self.population)
+        destdir_curves = os.path.join(self.ga_output_path, "ga_curves")
+        if not os.path.exists(destdir_curves):
+            os.makedirs(destdir_curves)
+        filepath_euclid = os.path.join(
+            destdir_curves,
+            "%03deuclid_distance-%d_data.png"
+            % (self.best_perf["generation"], self.start_time),
+        )
+        plt.figure(0)
+        plt.style.use("seaborn")
+        plt.scatter(distances_from_best, self.fitness_arr, marker=".", color="g")
+        plt.ylabel("Fitness")
+        plt.xlabel("Euclidian distance from best ansatz")
+        plt.savefig(filepath_euclid, format="png")
+        # data_tsne = tsne(self.population)
+        # filepath_tsne = os.path.join(
+        #     destdir_curves,
+        #     "%03dtsne_distance-%d_data.png"
+        #     % (self.best_perf["generation"], self.start_time),
+        # )
+        # plt.figure(0)
+        # plt.style.use("seaborn")
+        # plt.scatter([i[0] for i in data_tsne.T], [i[1] for i in data_tsne.T], marker=".", cmap=)
+        # plt.ylabel("a.u.")
+        # plt.xlabel("a.u.")
+        # plt.savefig(filepath_tsne, format="png")
+
         results = {
             "full_population": [i.ansatz_dicts for i in self.population],
             "full_drawn_population": [i.ansatz_draw for i in self.population],
@@ -212,6 +244,8 @@ class Model(GA_Model):
                 + f"Std. Dev: {np.std([i[k] for i in self.metrics_arr])}"
                 for k in self.metrics_arr[0].keys()
             ],
+            "full_distances": distances_from_best,
+            "distances_stats": f"Avg distance: {np.mean(distances_from_best)}, Std. Dev: {np.std(distances_from_best)}",
             "best_ansatz": self.best_perf["ansatz_dicts"],
             "best_drawn_ansatz": self.best_perf["ansatz_draw"],
             "best_fitness": self.best_perf["fitness"],
