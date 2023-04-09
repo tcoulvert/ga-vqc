@@ -115,18 +115,18 @@ class Model(GA_Model):
         """
         Evolves the GA.
         """
-        step = 0
+        gen = 0
         while True:
-            print(f"GA iteration {step}")
+            print(f"GA iteration {gen}")
             self.fitness_arr = [0 for i in self.population]
-            self.evaluate_fitness(step)
+            self.evaluate_fitness(gen)
 
-            results = self.make_results()
+            results = self.make_results(gen)
 
             parents = self.select()
             self.mate(parents)
             self.immigrate()
-            self.check_max_moments()
+            # self.check_max_moments()
 
             print(
                 f"Best fitness: {self.best_perf['fitness']}, " + 
@@ -134,15 +134,15 @@ class Model(GA_Model):
                 f"Best ansatz: {self.best_perf['ansatz_dicts']}"
             )
 
-            if step > 20:
-                if (step - self.best_perf["generation"]) > self.n_steps_patience:
+            if gen > 20:
+                if (gen - self.best_perf["generation"]) > self.n_steps_patience:
                     break
-            make_results_json(results, self.start_time, self.ga_output_path, step)
-            step += 1
+            make_results_json(results, self.start_time, self.ga_output_path, gen)
+            gen += 1
         print(
             "filename is: ",
             make_results_json(
-                results, self.start_time, self.ga_output_path, step, final_flag=True
+                results, self.start_time, self.ga_output_path, gen, final_flag=True
             ),
         )
 
@@ -203,7 +203,7 @@ class Model(GA_Model):
             self.best_perf["generation"] = gen
             self.best_perf["index"] = np.argmax(self.fitness_arr).item()
 
-    def make_results(self):
+    def make_results(self, gen):
         ### Euclidean distances ###
         distances_from_best = euclidean_distances(self.population[np.argmax(self.fitness_arr)], self.population)
         destdir_curves = os.path.join(self.ga_output_path, "ga_curves")
@@ -212,7 +212,7 @@ class Model(GA_Model):
         filepath_euclid = os.path.join(
             destdir_curves,
             "%03deuclid_distance-%s_data.png"
-            % (self.best_perf["generation"], self.start_time),
+            % (gen, self.start_time),
         )
         plt.figure(0)
         plt.style.use("seaborn")
@@ -221,14 +221,14 @@ class Model(GA_Model):
         plt.xlabel("Euclidian distance from best ansatz")
         plt.title("Euclidean Distances from Best Performing Ansatz")
         plt.savefig(filepath_euclid, format="png")
+        plt.close(0)
         ### tSNE clustering ###
-        data_tsne = tsne(self.population, rng_seed=self.rng_seed)
-        print(data_tsne)
+        data_tsne = tsne(self.population, rng_seed=self.rng_seed, perplexity=2)
         x, y = data_tsne[0], data_tsne[1]
         filepath_tsne = os.path.join(
             destdir_curves,
             "%03dtsne_distance-%s_data.png"
-            % (self.best_perf["generation"], self.start_time),
+            % (gen, self.start_time),
         )
         plt.figure(0)
         plt.style.use("seaborn")
@@ -239,6 +239,7 @@ class Model(GA_Model):
         cbar.set_label("AUROC")
         plt.title("tSNE of Current Population")
         plt.savefig(filepath_tsne, format="png")
+        plt.close(1)
 
         results = {
             "full_population": [i.ansatz_dicts for i in self.population],
@@ -299,7 +300,7 @@ class Model(GA_Model):
                 )
 
         # Perform the swap with neighboring parents
-        swap_set = set()
+        # swap_set = set()
         for swap_ix in swap_ixs:  # set up for odd number of parents
             children = [copy.deepcopy(parents[swap_ix[0]]), copy.deepcopy(parents[swap_ix[1]])]
             moment_A = self.rng.integers(children[0].n_moments) 
@@ -409,7 +410,8 @@ class Model(GA_Model):
             self.population.append(
                 Individual(
                     self.n_qubits,
-                    self.rng.integers(1, self.max_moments + 1),
+                    # self.rng.integers(1, self.max_moments + 1),
+                    self.max_moments,
                     self.genepool,
                     self.rng_seed,
                 )

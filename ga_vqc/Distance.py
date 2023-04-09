@@ -1,8 +1,8 @@
 import numpy as np
 from sklearn.manifold import TSNE
 
-def euclidean_distances(ansatz_comp, population):
-    vector_comp = create_vector(ansatz_comp)
+def euclidean_distances(ansatz_comp, population, max_moments=None):
+    vector_comp = create_vector(ansatz_comp, max_moments=max_moments)
     distances = []
     for ansatz in population:
         vector = create_vector(ansatz)
@@ -35,7 +35,10 @@ def tsne(population, perplexity=2, rng_seed=None):
 
     return S_t_sne.T
 
-def create_vector(ansatz):
+def create_vector(ansatz, max_moments=None):
+    if max_moments is not None and ansatz.n_moments != max_moments:
+        ansatz.add_moment('pad', num_pad=(max_moments - ansatz.n_moments))
+
     vector = []
     ### single-qubit gates ###
     for moment in range(ansatz.n_moments):
@@ -45,6 +48,7 @@ def create_vector(ansatz):
             else:
                 vector.append(0)
 
+    ### 2-qubit gates (CNOT) ###
     for moment in range(ansatz.n_moments):
         # [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1)]
         two_qubit_pairs = [0, 0, 0, 0, 0, 0]

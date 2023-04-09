@@ -26,7 +26,7 @@ class Individual(GA_Individual):
         self.n_moments = n_moments
         self.genepool = genepool
         self.rng = np.random.default_rng(seed=rng_seed)
-        self.pennylane_rng = pnp.random.default_rng()
+        self.pennylane_rng = pnp.random.default_rng(seed=rng_seed)
 
         self.ansatz_dicts = []
         self.ansatz_qml = []
