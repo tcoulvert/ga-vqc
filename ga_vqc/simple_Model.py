@@ -45,6 +45,7 @@ class Model(GA_Model):
         self.best_perf = {
             "fitness": 0,
             "eval_metrics": [],
+            "ansatz": None,
             "ansatz_dicts": [],
             "ansatz_draw": str(),
             "generation": 0,
@@ -149,6 +150,27 @@ class Model(GA_Model):
             ),
         )
 
+        ### Final re-training for std. dev. estimate ###
+        ansatz = self.best_perf["ansatz"]
+        ansatz.convert_to_qml()
+        ansatz.draw_ansatz()
+        vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
+        vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
+        vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
+        vqc_config_ansatz["params"] = ansatz.params
+        vqc_config_ansatz["gen"] = gen
+        fitness_arr = []
+        auroc_arr = []
+        for i in range(20):
+            vqc_config_ansatz["ix"] = i
+            output_dict = self.vqc(vqc_config_ansatz)
+            fitness_arr.append(output_dict["fitness_metric"])
+            auroc_arr.append(output_dict["eval_metrics"]["auroc"])
+        print(f"Final fitness distribution: {fitness_arr}")
+        print(f"Avg fitness: {np.mean(fitness_arr)},  Std Dev: {np.std(fitness_arr)}, Std Dev of Mean: {np.std(fitness_arr) / (20**0.5)}")
+        print(f"Final AUROC distribution: {auroc_arr}")
+        print(f"Avg AUROC: {np.mean(auroc_arr)},  Std Dev: {np.std(auroc_arr)}, Std Dev of Mean: {np.std(auroc_arr) / (20**0.5)}")
+
     def evaluate_fitness(self, gen):
         """
         Evaluates the fitness level of all ansatz. Runs the QML optimization task.
@@ -196,6 +218,9 @@ class Model(GA_Model):
             self.best_perf["fitness"] = np.amax(self.fitness_arr).item()
             self.best_perf["eval_metrics"] = copy.deepcopy(
                 self.metrics_arr[np.argmax(self.fitness_arr)]
+            )
+            self.best_perf["ansatz"] = copy.deepcopy(
+                self.population[np.argmax(self.fitness_arr)]
             )
             self.best_perf["ansatz_dicts"] = copy.deepcopy(
                 self.population[np.argmax(self.fitness_arr)].ansatz_dicts
