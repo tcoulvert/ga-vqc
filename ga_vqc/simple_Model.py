@@ -137,7 +137,10 @@ class Model(GA_Model):
             if gen > 20:
                 if (gen - self.best_perf["generation"]) > self.n_steps_patience:
                     break
-            make_results_json(results, self.start_time, self.ga_output_path, gen)
+            print(
+                "filename is: ",
+                make_results_json(results, self.start_time, self.ga_output_path, gen)
+            )
             gen += 1
         print(
             "filename is: ",
@@ -206,13 +209,13 @@ class Model(GA_Model):
     def make_results(self, gen):
         ### Euclidean distances ###
         distances_from_best = euclidean_distances(self.population[np.argmax(self.fitness_arr)], self.population)
-        destdir_curves = os.path.join(self.ga_output_path, "ga_curves")
+        destdir_curves = os.path.join(self.ga_output_path, "ga_curves", "run-%s" % self.start_time)
         if not os.path.exists(destdir_curves):
             os.makedirs(destdir_curves)
         filepath_euclid = os.path.join(
             destdir_curves,
-            "%03deuclid_distance-%s_data.png"
-            % (gen, self.start_time),
+            "%03deuclid_distance_data.png"
+            % gen
         )
         plt.figure(0)
         plt.style.use("seaborn")
@@ -227,10 +230,10 @@ class Model(GA_Model):
         x, y = data_tsne[0], data_tsne[1]
         filepath_tsne = os.path.join(
             destdir_curves,
-            "%03dtsne_distance-%s_data.png"
-            % (gen, self.start_time),
+            "%03dtsne_distance_data.png"
+            % gen
         )
-        plt.figure(0)
+        plt.figure(1)
         plt.style.use("seaborn")
         plt.scatter(x, y, marker=".", c=[i["auroc"] for i in self.metrics_arr], cmap=plt.set_cmap('plasma'))
         plt.ylabel("a.u.")
@@ -269,7 +272,7 @@ class Model(GA_Model):
         Picks the top performing ansatz from a generation to mate and mutate for the next generation.
         """
         winner_arr = []
-        for i in range(self.n_winners):
+        for _ in range(self.n_winners):
             winner_ix = np.argmax(self.fitness_arr)
             winner = self.population[winner_ix]
             winner_arr.append(winner)

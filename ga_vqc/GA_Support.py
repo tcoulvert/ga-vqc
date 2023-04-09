@@ -4,10 +4,10 @@ import os
 
 def make_results_json(results, start_time, script_path, gen, final_flag=False):
     if final_flag:
-        filename = "final_evolution_results-%s.json" % (start_time)
+        filename = "final_evolution_results.json"
     else:
-        filename = "%03d_evolution_results-%s.json" % (gen, start_time)
-    destdir = os.path.join(script_path, "ga_runs")
+        filename = "%03d_evolution_results.json" % gen
+    destdir = os.path.join(script_path, "ga_runs", "run-%s" % start_time)
     filepath = os.path.join(destdir, filename)
     if not os.path.exists(destdir):
         os.makedirs(destdir)

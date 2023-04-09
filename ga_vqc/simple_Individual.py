@@ -228,18 +228,17 @@ class Individual(GA_Individual):
                 if self.ansatz_dicts[moment][qubit_pair].find("_") > 0:
                     double_swap_flag += 1
                     gate_pair = self.genepool.choice()
-                    if double_swap_flag == 2 and gate_pair.n_qubits == 1:
+                    if double_swap_flag == 2 and gate_pair.n_qubits == 2:
                         direction = self.rng.permutation(["_C", "_T"])
                         self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit][-1])] = (
-                            gate.name + direction[0] + f"-{int(self.ansatz_dicts[moment][qubit_pair][-1])}"
+                            gate_pair.name + direction[0] + f"-{int(self.ansatz_dicts[moment][qubit_pair][-1])}"
                         )
                         self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit_pair][-1])] = (
-                            gate.name + direction[1] + f"-{int(self.ansatz_dicts[moment][qubit][-1])}"
+                            gate_pair.name + direction[1] + f"-{int(self.ansatz_dicts[moment][qubit][-1])}"
                         )
                     else:
-                        self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit_pair][-1])] = self.rng.choice(
-                            self.gates_arr[:-1]
-                        )
+                        gate_pair = self.genepool.choice(n_qubits=1)
+                        self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit_pair][-1])] = gate_pair.name
 
                 direction = self.rng.permutation(["_C", "_T"])
                 self.ansatz_dicts[moment][qubit] = gate.name + direction[0] + f"-{qubit_pair}"
