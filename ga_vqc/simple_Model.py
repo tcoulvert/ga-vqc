@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pennylane as qml
 
-from .Distance import euclidian_distances, tsne
+from .Distance import euclidean_distances, tsne
 from .GA_ABC import GA_Model
 from .GA_Support import make_results_json
 from .simple_Individual import Individual
@@ -161,7 +161,7 @@ class Model(GA_Model):
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
             vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
             vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
-            vqc_config_ansatz["n_params"] = ansatz.n_params
+            vqc_config_ansatz["params"] = ansatz.params
             vqc_config_ansatz["ix"] = ix
             vqc_config_ansatz["gen"] = gen
             args_arr.append(copy.deepcopy(vqc_config_ansatz))
@@ -204,34 +204,41 @@ class Model(GA_Model):
             self.best_perf["index"] = np.argmax(self.fitness_arr).item()
 
     def make_results(self):
-
-        distances_from_best = euclidian_distances(self.best_perf["ansatz_dicts"], self.population)
+        ### Euclidean distances ###
+        distances_from_best = euclidean_distances(self.population[np.argmax(self.fitness_arr)], self.population)
         destdir_curves = os.path.join(self.ga_output_path, "ga_curves")
         if not os.path.exists(destdir_curves):
             os.makedirs(destdir_curves)
         filepath_euclid = os.path.join(
             destdir_curves,
-            "%03deuclid_distance-%d_data.png"
+            "%03deuclid_distance-%s_data.png"
             % (self.best_perf["generation"], self.start_time),
         )
         plt.figure(0)
         plt.style.use("seaborn")
-        plt.scatter(distances_from_best, self.fitness_arr, marker=".", color="g")
-        plt.ylabel("Fitness")
+        plt.scatter(distances_from_best, [i["auroc"] for i in self.metrics_arr], marker=".", color="g")
+        plt.ylabel("AUROC")
         plt.xlabel("Euclidian distance from best ansatz")
+        plt.title("Euclidean Distances from Best Performing Ansatz")
         plt.savefig(filepath_euclid, format="png")
-        # data_tsne = tsne(self.population)
-        # filepath_tsne = os.path.join(
-        #     destdir_curves,
-        #     "%03dtsne_distance-%d_data.png"
-        #     % (self.best_perf["generation"], self.start_time),
-        # )
-        # plt.figure(0)
-        # plt.style.use("seaborn")
-        # plt.scatter([i[0] for i in data_tsne.T], [i[1] for i in data_tsne.T], marker=".", cmap=)
-        # plt.ylabel("a.u.")
-        # plt.xlabel("a.u.")
-        # plt.savefig(filepath_tsne, format="png")
+        ### tSNE clustering ###
+        data_tsne = tsne(self.population, rng_seed=self.rng_seed)
+        print(data_tsne)
+        x, y = data_tsne[0], data_tsne[1]
+        filepath_tsne = os.path.join(
+            destdir_curves,
+            "%03dtsne_distance-%s_data.png"
+            % (self.best_perf["generation"], self.start_time),
+        )
+        plt.figure(0)
+        plt.style.use("seaborn")
+        plt.scatter(x, y, marker=".", c=[i["auroc"] for i in self.metrics_arr], cmap=plt.set_cmap('plasma'))
+        plt.ylabel("a.u.")
+        plt.xlabel("a.u.")
+        cbar = plt.colorbar()
+        cbar.set_label("AUROC")
+        plt.title("tSNE of Current Population")
+        plt.savefig(filepath_tsne, format="png")
 
         results = {
             "full_population": [i.ansatz_dicts for i in self.population],

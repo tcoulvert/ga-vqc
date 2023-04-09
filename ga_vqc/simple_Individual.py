@@ -2,6 +2,7 @@ import copy
 
 import numpy as np
 import pennylane as qml
+import pennylane.numpy as pnp
 
 from .GA_ABC import GA_Individual
 
@@ -25,11 +26,12 @@ class Individual(GA_Individual):
         self.n_moments = n_moments
         self.genepool = genepool
         self.rng = np.random.default_rng(seed=rng_seed)
+        self.pennylane_rng = pnp.random.default_rng()
 
         self.ansatz_dicts = []
         self.ansatz_qml = []
         self.ansatz_draw = []
-        self.n_params = 0
+        self.params = []
 
         self.generate()  # Should this be done automatically?
         self.convert_to_qml()
@@ -73,7 +75,6 @@ class Individual(GA_Individual):
 
                 if gate.n_qubits == 1:
                     self.ansatz_dicts[moment][qubit] = gate.name
-                    self.n_params += gate.n_params
                     continue
                 elif gate.n_qubits == 2:
                     qubit_pairs = self.rng.permutation(
@@ -86,13 +87,11 @@ class Individual(GA_Individual):
                         direction = self.rng.permutation(["_C", "_T"])
                         self.ansatz_dicts[moment][qubit] = gate.name + direction[0] + f"-{qubit_pair}"
                         self.ansatz_dicts[moment][qubit_pair] = gate.name + direction[1] + f"-{qubit}"
-                        self.n_params += gate.n_params
                         break
 
                     if self.ansatz_dicts[moment][qubit] == 0:
                         gate = self.genepool.choice(n_qubits=1)
                         self.ansatz_dicts[moment][qubit] = gate.name
-                        self.n_params += gate.n_params
                 else:
                     raise Exception("Gates with more than 2 qubits haven't been implemented yet.")
 
@@ -100,7 +99,7 @@ class Individual(GA_Individual):
         """
         Converts the ansatz into a general format for the QML.
 
-            moment_dict example: **_C (_T) means current qubit is control (target) qubit of 2-qubit gate**
+            moment_dict example: _C (_T) means current qubit is control (target) qubit of 2-qubit gate
                 {'I': [],
                  'RX': [],
                  'RY': [],
@@ -108,6 +107,7 @@ class Individual(GA_Individual):
                  'CNOT': []}
         """
         self.ansatz_qml = []
+        self.params = []
         for moment in range(len(self.ansatz_dicts)):
             moment_dict = {gate.name: list() for gate in self.genepool.gates}
             stored_i = []
@@ -126,22 +126,38 @@ class Individual(GA_Individual):
                     else:
                         moment_dict[self.ansatz_dicts[moment][qubit][:_ix]].append([int(q_p), qubit])
 
-            count = 0
             for gate_name in moment_dict.keys():
                 if len(moment_dict[gate_name]) == 0 or gate_name == "I":
                     continue
                 if self.genepool.n_qubits(gate_name) == 1: # Change to check n_params of gate
-                    self.ansatz_qml.append(
-                        f"qml.broadcast(qml.{gate_name}, wires={moment_dict[gate_name]}, pattern='single', " +
-                        f"parameters=params[{count}:{count + (self.genepool.n_params(gate_name) * len(moment_dict[gate_name]))}])"
-                    )
-                    count += self.genepool.n_params(gate_name) * len(moment_dict[gate_name])
-                elif self.genepool.n_qubits(gate_name) == 2:  # Assumes the 2-qubit gates have no parameters, which is not generally true
-                    self.ansatz_qml.append(
-                        f"qml.broadcast(qml.{gate_name}, wires={np.array(moment_dict[gate_name]).flatten(order='C').tolist()}, " +
-                        f"pattern={moment_dict[gate_name]})"
-                    )
-                    # change to allow for two-qubit gates with 1+ params
+                    if self.genepool.n_params(gate_name) > 0:
+                        self.ansatz_qml.append(
+                            f"qml.broadcast(qml.{gate_name}, wires={moment_dict[gate_name]}, pattern='single', " +
+                            f"parameters=params[{len(self.params)}:{len(self.params) + len(moment_dict[gate_name])}])"
+                        )
+                        for _ in range(len(moment_dict[gate_name])):
+                            # self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name), requires_grad=True))
+                            self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name)))
+                    else:
+                        self.ansatz_qml.append(
+                            f"qml.broadcast(qml.{gate_name}, wires={moment_dict[gate_name]}, pattern='single')"
+                        )
+                elif self.genepool.n_qubits(gate_name) == 2:
+                    if self.genepool.n_params(gate_name) > 0:
+                        self.ansatz_qml.append(
+                            f"qml.broadcast(qml.{gate_name}, wires={np.array(moment_dict[gate_name]).flatten(order='C').tolist()}, " +
+                            f"parameters=params[{len(self.params)}:{len(self.params) + len(moment_dict[gate_name])}])" +
+                            f"pattern={moment_dict[gate_name]})"
+                        )
+                        for _ in range(len(moment_dict[gate_name])):
+                            # self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name), requires_grad=True))
+                            self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name)))
+                    else:
+                        self.ansatz_qml.append(
+                            f"qml.broadcast(qml.{gate_name}, wires={np.array(moment_dict[gate_name]).flatten(order='C').tolist()}, " +
+                            f"pattern={moment_dict[gate_name]})"
+                        )
+        self.params = pnp.array(self.params, dtype=object, requires_grad=True)
 
     def ansatz_circuit(self, params, event=None):
         for m in self.ansatz_qml:
@@ -158,24 +174,26 @@ class Individual(GA_Individual):
             decimals=None,
             expansion_strategy="device",
             show_all_wires=True,
-        )([0.0 for _ in range(self.n_params)], event=[i for i in range(self.n_qubits)])[:-3]
+        )(self.params, event=[i for i in range(self.n_qubits)])[:-3]
         indices = [i for i, c in enumerate(full_ansatz_draw) if c == ":"]
         for _ in range(self.n_qubits):
             self.ansatz_draw.append(full_ansatz_draw[: indices[1] - 2][3:-2])
             full_ansatz_draw = full_ansatz_draw[indices[1] - 1 :]
 
-    def add_moment(self, method='random'):
+    def add_moment(self, method='random', **kwargs):
         """
         TODO: change to randomly generate new moment?
         """
         moment = self.rng.integers(self.n_moments)
 
         if method == 'random':
-            pass
+            raise Exception("Method not yet supported.")
         elif method == 'duplicate':
             self.ansatz_dicts.append(copy.deepcopy(self.ansatz_dicts[moment]))
         elif method == 'pad':
-            pass
+            for _ in range(kwargs['num_pad']):
+                self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
+                self.n_moments += 1
         else:
             raise Exception("Method not supported.")
         
