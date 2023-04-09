@@ -13,7 +13,7 @@ def make_results_json(results, start_time, script_path, gen, final_flag=False):
         os.makedirs(destdir)
     json.dump(results, open(filepath, "w"), indent=4)
 
-    return filename
+    return filepath
 
 
 class UnsupportedBackendDecorator(Exception):

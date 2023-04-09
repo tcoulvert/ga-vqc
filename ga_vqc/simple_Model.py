@@ -138,12 +138,12 @@ class Model(GA_Model):
                 if (gen - self.best_perf["generation"]) > self.n_steps_patience:
                     break
             print(
-                "filename is: ",
+                "filepath is: ",
                 make_results_json(results, self.start_time, self.ga_output_path, gen)
             )
             gen += 1
         print(
-            "filename is: ",
+            "filepath is: ",
             make_results_json(
                 results, self.start_time, self.ga_output_path, gen, final_flag=True
             ),
