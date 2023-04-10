@@ -12,7 +12,7 @@ class Individual(GA_Individual):
     Data structure for the ansatz.
     """
 
-    def __init__(self, n_qubits, n_moments, genepool, rng_seed, ansatz_dict=None):
+    def __init__(self, n_qubits, n_moments, genepool, rng_seed, ansatz_dicts=None):
         """
         Initializes the inidivual object, all individuals (ansatz) are members of this class.
             - n_qubits: Number of qubits in the ansatz.
@@ -33,10 +33,10 @@ class Individual(GA_Individual):
         self.ansatz_draw = []
         self.params = []
 
-        if ansatz_dict is None:
+        if ansatz_dicts is None:
             self.generate()
         else:
-            self.generate_from(ansatz_dict)
+            self.generate_from(ansatz_dicts)
         self.convert_to_qml()
         self.draw_ansatz()
 
@@ -101,7 +101,7 @@ class Individual(GA_Individual):
     def generate_from(self, ansatz):
         self.ansatz_dicts = copy.deepcopy(ansatz)
         self.convert_to_qml()
-        self.ansatz_draw()
+        self.draw_ansatz()
 
     def convert_to_qml(self):
         """
