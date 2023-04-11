@@ -209,7 +209,6 @@ class Model(GA_Model):
             self.fitness_arr[i] = output_arr[i]["fitness_metric"]
             self.metrics_arr[i] = output_arr[i]["eval_metrics"]
 
-        print(len(self.fitness_arr))
         end_time = time.time()
         exec_time = end_time - start_time
         print(f"QML Optimization in {exec_time:.2f} seconds")
@@ -245,9 +244,11 @@ class Model(GA_Model):
         )
         plt.figure(0)
         plt.style.use("seaborn")
-        plt.scatter(distances_from_best, [i["auroc"] for i in self.metrics_arr], marker=".", color="g")
+        plt.scatter(distances_from_best, self.fitness_arr, marker=".", c=[i["auroc"] for i in self.metrics_arr], cmap=plt.set_cmap('plasma'))
+        cbar = plt.colorbar()
+        cbar.set_label("AUROC")
         plt.ylabel("AUROC")
-        plt.xlabel("Euclidian distance from best ansatz")
+        plt.xlabel("Euclidian distance")
         plt.title("Euclidean Distances from Best Performing Ansatz")
         plt.savefig(filepath_euclid, format="png")
         plt.close(0)
