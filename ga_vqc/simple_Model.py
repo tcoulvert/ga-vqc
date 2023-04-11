@@ -209,6 +209,8 @@ class Model(GA_Model):
             #  default python classes or have custom serialization)
             self.fitness_arr[i] = output_arr[i]["fitness_metric"]
             self.metrics_arr[i] = output_arr[i]["eval_metrics"]
+
+        print(len(self.fitness_arr))
         end_time = time.time()
         exec_time = end_time - start_time
         print(f"QML Optimization in {exec_time:.2f} seconds")
@@ -272,7 +274,7 @@ class Model(GA_Model):
         results = {
             "full_population": [i.ansatz_dicts for i in self.population],
             "full_drawn_population": [i.ansatz_draw for i in self.population],
-            "full_fitness": self.fitness_arr,
+            "full_fitness": [i for i in self.fitness_arr],
             "fitness_stats": f"Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}",
             "full_eval_metrics": self.metrics_arr,
             "eval_metrics_stats": [
