@@ -135,9 +135,8 @@ class Model(GA_Model):
                 f"Best ansatz: {self.best_perf['ansatz_dicts']}"
             )
 
-            if gen > 20:
-                if (gen - self.best_perf["generation"]) > self.n_steps_patience:
-                    break
+            if (gen - self.best_perf["generation"]) > self.n_steps_patience:
+                break
             print(
                 "filepath is: ",
                 make_results_json(results, self.start_time, self.ga_output_path, gen)
