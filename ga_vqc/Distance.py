@@ -63,8 +63,6 @@ def create_vector(ansatz, max_moments=None):
             one_qubit_states[ansatz.genepool.index_of(ansatz[moment][qubit])] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
             vector.extend([i for i in one_qubit_states])
 
-    print(f"Length of vector after one-qubit gates: {len(vector)}")
-
     ### 2-qubit gates ###
     for moment in range(ansatz.n_moments):
         # [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1), ('I', 'I')]
@@ -86,8 +84,6 @@ def create_vector(ansatz, max_moments=None):
                     two_qubit_states[2*qubit + 1] = 1
                 break
         vector.extend(two_qubit_states)
-
-    print(f"Length of vector after two-qubit gates: {len(vector)}")
 
     ### 3+ qubit gates ###
     # TO DO
