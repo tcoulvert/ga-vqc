@@ -56,7 +56,6 @@ def create_vector(ansatz, max_moments=None):
                 )
             ):
                 one_qubit_states.extend([0])
-            print(len(one_qubit_states))
             if ansatz.genepool.n_qubits(ansatz[moment][qubit]) != 1:
                 vector.extend([i for i in one_qubit_states])
                 continue
