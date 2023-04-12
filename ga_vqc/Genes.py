@@ -41,7 +41,9 @@ class Genepool:
 
     def n_qubits(self, gate_name) -> int:
         if gate_name is None:
-            raise Exception("Cannot look for None-type gate.") 
+            raise Exception("Cannot look for None-type gate.")
+        if gate_name[0] == 'C': # properly check for non-name gates -> change ansatz_dicts to adjacency matrix
+            return 2 
         for gate in self.gates:
             if gate.name == gate_name:
                 return gate.n_qubits
