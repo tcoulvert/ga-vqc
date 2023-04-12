@@ -72,7 +72,7 @@ def create_vector(ansatz, max_moments=None):
                 search_param={'n_qubits': 2}
             )
         ):
-            two_qubit_states.extend([0 for __ in range(np.math.factorial(ansatz.n_qubits)) + 1])
+            two_qubit_states.extend([0 for __ in range(np.math.factorial(ansatz.n_qubits) + 1)])
             two_qubit_states[-1] = 1
         
         for qubit in range(ansatz.n_qubits):
