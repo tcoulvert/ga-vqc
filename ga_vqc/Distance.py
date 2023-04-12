@@ -56,27 +56,30 @@ def create_vector(ansatz, max_moments=None):
                 )
             ):
                 one_qubit_states.extend([0])
-            if ansatz[moment][qubit] == 'I' or ansatz.genepool.n_qubits(ansatz[moment][qubit]) != 1:
+            print(len(one_qubit_states))
+            if ansatz.genepool.n_qubits(ansatz[moment][qubit]) != 1:
                 vector.extend([i for i in one_qubit_states])
                 continue
-            one_qubit_states[ansatz.genepool.index_of(ansatz[moment][qubit]) - 1] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
+            one_qubit_states[ansatz.genepool.index_of(ansatz[moment][qubit])] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
             vector.extend([i for i in one_qubit_states])
 
     print(f"Length of vector after one-qubit gates: {len(vector)}")
 
     ### 2-qubit gates ###
     for moment in range(ansatz.n_moments):
-        # [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1)]
+        # [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1), ('I', 'I')]
         two_qubit_states = []
         for _ in range(
             ansatz.genepool.n_gates(
                 search_param={'n_qubits': 2}
             )
         ):
-            two_qubit_states.extend([0 for __ in range(np.math.factorial(ansatz.n_qubits))])
+            two_qubit_states.extend([0 for __ in range(np.math.factorial(ansatz.n_qubits)) + 1])
+            two_qubit_states[-1] = 1
         
         for qubit in range(ansatz.n_qubits):
             if ansatz[moment][qubit].find('_') > 0: # Doesn't work for passing more than 1 2-qubit gate, and only works for 'control'/'target' gates
+                two_qubit_states[-1] = 0
                 if ansatz[moment][qubit][-3] == 'C':
                     two_qubit_states[2*qubit] = 1
                 elif ansatz[moment][qubit][-3] == 'T':

@@ -73,7 +73,7 @@ class Genepool:
         if gate_name is None:
             raise Exception("Cannot look for None-type gate.")
         for i in range(len(self.gates)):
-            if self.gates[i] == gate_name:
+            if self.gates[i].name == gate_name:
                 return i
 
         raise Exception("Gate not in genepool.")
