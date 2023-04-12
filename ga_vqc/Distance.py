@@ -25,9 +25,10 @@ def tsne(population, perplexity=2, rng_seed=None):
         vectors.append(create_vector(ansatz))
     vectors = np.array(vectors)
     
-    pca = PCA()
-    vectors = pca.fit_transform(vectors) # Will return with n_components = n_samples b/c n_samples always << 4x10^12 of n_features
-
+    if vectors.shape[1] > 100:
+        pca = PCA()
+        vectors = pca.fit_transform(vectors) 
+        
     t_sne = TSNE(
         n_components=2,
         perplexity=perplexity,
