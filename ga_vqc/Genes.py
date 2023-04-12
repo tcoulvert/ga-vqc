@@ -48,6 +48,34 @@ class Genepool:
 
         raise Exception("Gate asked for not in genepool.")
 
+    def n_gates(self, search_param={}):
+        """
+        Returns total number of gates unless given another parameter to search for.
+        """
+        for k, v in search_param.items():
+            count = 0
+            if k == 'n_params':
+                for gate in self.gates:
+                    if gate.n_params == v:
+                        count += 1
+                return count
+            elif k == 'n_qubits':
+                for gate in self.gates:
+                    if gate.n_qubits == v:
+                        count += 1
+                return count
+
+        return len(self.gates)
+
+    def index_of(self, gate_name):
+        if gate_name is None:
+            raise Exception("Cannot look for None-type gate.")
+        for i in range(len(self.gates)):
+            if self.gates[i] == gate_name:
+                return i
+
+        raise Exception("Gate not in genepool.")
+
     def choice(self, size=1, replace=True, n_qubits=None, n_params=None):
         gates_copy = [gate for gate in self.gates]
         probs_copy = [prob for prob in self.probs]

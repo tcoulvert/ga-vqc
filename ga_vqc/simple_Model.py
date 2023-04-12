@@ -282,8 +282,8 @@ class Model(GA_Model):
                 + f"Std. Dev: {np.std([i[k] for i in self.metrics_arr])}"
                 for k in self.metrics_arr[0].keys()
             ],
-            "full_distances": distances_from_best,
-            "distances_stats": f"Avg distance: {np.mean(distances_from_best)}, Std. Dev: {np.std(distances_from_best)}",
+            # "full_distances": distances_from_best,
+            # "distances_stats": f"Avg distance: {np.mean(distances_from_best)}, Std. Dev: {np.std(distances_from_best)}",
             "best_ansatz": self.best_perf["ansatz_dicts"],
             "best_drawn_ansatz": self.best_perf["ansatz_draw"],
             "best_fitness": self.best_perf["fitness"],

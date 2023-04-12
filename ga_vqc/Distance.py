@@ -1,5 +1,7 @@
 import numpy as np
+from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+
 
 def euclidean_distances(ansatz_comp, population, max_moments=None):
     vector_comp = create_vector(ansatz_comp, max_moments=max_moments)
@@ -23,6 +25,9 @@ def tsne(population, perplexity=2, rng_seed=None):
         vectors.append(create_vector(ansatz))
     vectors = np.array(vectors)
     
+    pca = PCA()
+    vectors = pca.fit_transform(vectors) # Will return with n_components = n_samples b/c n_samples always << 4x10^12 of n_features
+
     t_sne = TSNE(
         n_components=2,
         perplexity=perplexity,
@@ -40,25 +45,48 @@ def create_vector(ansatz, max_moments=None):
         ansatz.add_moment('pad', num_pad=(max_moments - ansatz.n_moments))
 
     vector = []
+
     ### single-qubit gates ###
     for moment in range(ansatz.n_moments):
         for qubit in range(ansatz.n_qubits):
-            if ansatz[moment][qubit] == 'U3':
-                vector.append(1)
-            else:
-                vector.append(0)
+            one_qubit_states = []
+            for _ in range(
+                ansatz.genepool.n_gates(
+                    search_param={'n_qubits': 1}
+                )
+            ):
+                one_qubit_states.extend([0])
+            if ansatz[moment][qubit] == 'I' or ansatz.genepool.n_qubits(ansatz[moment][qubit]) != 1:
+                vector.extend([i for i in one_qubit_states])
+                continue
+            one_qubit_states[ansatz.genepool.index_of(ansatz[moment][qubit]) - 1] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
+            vector.extend([i for i in one_qubit_states])
 
-    ### 2-qubit gates (CNOT) ###
+    print(f"Length of vector after one-qubit gates: {len(vector)}")
+
+    ### 2-qubit gates ###
     for moment in range(ansatz.n_moments):
         # [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1)]
-        two_qubit_pairs = [0, 0, 0, 0, 0, 0]
+        two_qubit_states = []
+        for _ in range(
+            ansatz.genepool.n_gates(
+                search_param={'n_qubits': 2}
+            )
+        ):
+            two_qubit_states.extend([0 for __ in range(np.math.factorial(ansatz.n_qubits))])
+        
         for qubit in range(ansatz.n_qubits):
-            if ansatz[moment][qubit].find('_') > 0:
+            if ansatz[moment][qubit].find('_') > 0: # Doesn't work for passing more than 1 2-qubit gate, and only works for 'control'/'target' gates
                 if ansatz[moment][qubit][-3] == 'C':
-                    two_qubit_pairs[2*qubit] = 1
+                    two_qubit_states[2*qubit] = 1
                 elif ansatz[moment][qubit][-3] == 'T':
-                    two_qubit_pairs[2*qubit + 1] = 1
+                    two_qubit_states[2*qubit + 1] = 1
                 break
-        vector.extend(two_qubit_pairs)
+        vector.extend(two_qubit_states)
+
+    print(f"Length of vector after two-qubit gates: {len(vector)}")
+
+    ### 3+ qubit gates ###
+    # TO DO
 
     return np.array(vector)
