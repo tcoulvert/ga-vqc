@@ -37,8 +37,6 @@ class Individual(GA_Individual):
             self.generate()
         else:
             self.generate_from(ansatz_dicts)
-        self.convert_to_qml()
-        self.draw_ansatz()
 
     def __len__(self):
         return len(self.ansatz_dicts[0])
@@ -51,12 +49,14 @@ class Individual(GA_Individual):
 
     def __setitem__(self, key, value):
         """
-        TODO: fix implementation (need to set whole moments?)
+        Allows editing of the ansatz via the [] operators.
         """
         if type(key) is tuple:
             self.ansatz_dicts[int(key[0])][int(key[1])] = value
         else:
             self.ansatz_dicts[int(key)] = value
+        self.convert_to_qml()
+        self.draw_ansatz()
 
     def __str__(self):
         return str(self.ansatz_dicts)
@@ -97,6 +97,9 @@ class Individual(GA_Individual):
                         self.ansatz_dicts[moment][qubit] = gate.name
                 else:
                     raise Exception("Gates with more than 2 qubits haven't been implemented yet.")
+                
+        self.convert_to_qml()
+        self.draw_ansatz()
 
     def generate_from(self, ansatz):
         self.ansatz_dicts = copy.deepcopy(ansatz)
@@ -206,12 +209,12 @@ class Individual(GA_Individual):
             raise Exception("Method not supported.")
         
         self.n_moments += 1
+        self.convert_to_qml()
+        self.draw_ansatz()
 
     def mutate(self, moment, qubit):
         """
         Mutates a single ansatz by modifying n_mutations random qubit(s) at 1 random time each.
-
-        TODO:
 
         Variables
             j: selected moment
@@ -252,3 +255,6 @@ class Individual(GA_Individual):
                 self.ansatz_dicts[moment][qubit] = gate.name + direction[0] + f"-{qubit_pair}"
                 self.ansatz_dicts[moment][qubit_pair] = gate.name + direction[1] + f"-{qubit}"
                 break
+
+        self.convert_to_qml()
+        self.draw_ansatz()

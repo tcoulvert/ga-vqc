@@ -78,7 +78,6 @@ class Model(GA_Model):
             init_pop.append(
                 Individual(
                     self.n_qubits,
-                    # self.rng.integers(1, self.max_moments + 1),
                     self.max_moments,
                     self.genepool,
                     self.rng_seed,
@@ -150,8 +149,6 @@ class Model(GA_Model):
 
         ### Final re-training for std. dev. estimate ###
         ansatz = self.best_perf["ansatz"]
-        ansatz.convert_to_qml()
-        ansatz.draw_ansatz()
         vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
         vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
         vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
@@ -179,8 +176,6 @@ class Model(GA_Model):
         ix = 0
         args_arr = []
         for ansatz in self.population:
-            ansatz.convert_to_qml()
-            ansatz.draw_ansatz()
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
             vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
             vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
@@ -311,7 +306,7 @@ class Model(GA_Model):
         """
         Swaps the qubits of ansatz.
 
-        TODO:
+        TODO: Implement gate mating.
         """
         children_arr = []
         swap_ixs = []
