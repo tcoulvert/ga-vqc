@@ -18,11 +18,21 @@ to my mentor at Caltech.
 import ga_vqc as gav
 
 # Config (hyperparameters) for GA, see full list in example
-config = {
-    'backend': 'simple',
-    'vqc': main,
-    'vqc_config': {},
+
+vqc_main = 'Function that handles running your VQC optimization'
+
+gates_dict = {"I": (1, 0), "RX": (1, 1), "CNOT": (2, 0)}
+gates_probs = [0.175, 0.175, 0.175, 0.175, 0.3]
+genepool = gav.Genepool(gates_dict, gates_probs)
+
+vqc_config = {
+    'num_qubits': 3,
+    'etc': 'whatever config params your VQC model requires'
 }
+
+ga_output_path = FILEPATH_FOR_GA_OUTPUT
+
+config = gav.Config(vqc_main, vqc_config, genepool, ga_output_path)
 
 # Create the GA with the given hyperparameters
 ga = gav.setup(config)

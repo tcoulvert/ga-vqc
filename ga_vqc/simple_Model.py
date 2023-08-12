@@ -27,21 +27,20 @@ class Model(GA_Model):
         TODO: write out explanations for hyperparams
         """
         ### hyperparams for GA ###
-        self.backend_type = config["backend_type"]
-        self.vqc = config["vqc"]
-        self.max_concurrent = config["max_concurrent"]
+        self.backend_type = config.backend_type
+        self.vqc = config.vqc
+        self.max_concurrent = config.max_concurrent
 
-        self.n_qubits = config["n_qubits"]
-        self.max_moments = config["max_moments"]
-        self.add_moment_prob = config["add_moment_prob"]
-        self.genepool = config["genepool"]
-        self.pop_size = config["pop_size"]
-        self.init_pop_size = config["init_pop_size"]
-        self.n_new_individuals = config["n_new_individuals"]
-        self.n_winners = config["n_winners"]
-        self.n_mutations = config["n_mutations"]
-        self.n_mate_swaps = config["n_mate_swaps"]
-        self.n_steps_patience = config["n_steps_patience"]
+        self.n_qubits = config.n_qubits
+        self.max_moments = config.max_moments
+        self.add_moment_prob = config.add_moment_prob
+        self.genepool = config.genepool
+        self.pop_size = config.pop_size
+        self.init_pop_size = config.init_pop_size
+        self.n_new_individuals = config.n_new_individuals
+        self.n_winners = config.n_winners
+        self.n_mutations = config.n_mutations
+        self.n_steps_patience = config.n_steps_patience
         self.best_perf = {
             "fitness": 0,
             "eval_metrics": [],
@@ -53,12 +52,12 @@ class Model(GA_Model):
         }
 
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.ga_output_path = config["ga_output_path"]
-        self.rng_seed = config["rng_seed"]
+        self.ga_output_path = config.ga_output_path
+        self.rng_seed = config.rng_seed
         self.rng = np.random.default_rng(seed=self.rng_seed)
 
         ### hyperparams for qae ###
-        self.vqc_config = config["vqc_config"]
+        self.vqc_config = config.vqc_config
         self.vqc_config["n_ansatz_qubits"] = self.n_qubits
         self.vqc_config["start_time"] = self.start_time
 
