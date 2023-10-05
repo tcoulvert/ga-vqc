@@ -41,7 +41,7 @@ def tsne(population, perplexity=2, rng_seed=None):
 
     return S_t_sne.T
 
-def create_vector(ansatz, max_moments=None):
+def create_vector(ansatz, max_moments=None, return_type='numpy'):
     if max_moments is not None and ansatz.n_moments != max_moments:
         ansatz.add_moment('pad', num_pad=(max_moments - ansatz.n_moments))
 
@@ -88,4 +88,7 @@ def create_vector(ansatz, max_moments=None):
     ### 3+ qubit gates ###
     # TO DO
 
-    return np.array(vector)
+    if return_type == 'numpy':
+        return np.array(vector)
+    elif return_type == 'list':
+        return vector

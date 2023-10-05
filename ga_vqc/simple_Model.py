@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pennylane as qml
 
-from .Distance import euclidean_distances, tsne
+from .Distance import euclidean_distances, tsne, create_vector
 from .GA_ABC import GA_Model
 from .GA_Support import make_results_json
 from .simple_Individual import Individual
@@ -24,7 +24,8 @@ class Model(GA_Model):
 
     def __init__(self, config):
         """
-        TODO: write out explanations for hyperparams
+        TODO: don't use 'self.' anymore for hyperparams, just pass around config so its clear 
+            what state is set at runtime and doesnt change
         """
         ### hyperparams for GA ###
         self.backend_type = config.backend_type
@@ -51,6 +52,11 @@ class Model(GA_Model):
             "index": 0,
         }
 
+        self.population = []
+        self.set_of_all_circuits = set()
+        self.fitness_arr = [0 for _ in range(self.pop_size)]
+        self.metrics_arr = [dict() for _ in range(self.pop_size)]
+
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         # Following time variables for debugging purposes only #
         self.total_ga_time = 0
@@ -66,9 +72,7 @@ class Model(GA_Model):
         self.vqc_config["n_ansatz_qubits"] = self.n_qubits
         self.vqc_config["start_time"] = self.start_time
 
-        self.population = []
-        self.fitness_arr = [0 for _ in range(self.pop_size)]
-        self.metrics_arr = [dict() for _ in range(self.pop_size)]
+        
         self.generate_initial_pop()
 
     def generate_initial_pop(self):
@@ -241,12 +245,15 @@ class Model(GA_Model):
         """
         Evaluates the fitness level of all ansatz. Runs the QML optimization task.
 
-        TODO: change to do per given ansatz (so we don't have to train every ansatz).
+        TODO: 1. change to do per given ansatz (so we don't have to train every ansatz).
             -> make so fitness_arr can be shorter than population
+            2. check if the set works???
         """
         ix = 0
         args_arr = []
         for ansatz in self.population:
+            self.set_of_all_circuits.add(tuple(create_vector(ansatz, return_type='list')))
+
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
             vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
             vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
