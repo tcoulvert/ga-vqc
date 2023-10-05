@@ -52,6 +52,11 @@ class Model(GA_Model):
         }
 
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        # Following time variables for debugging purposes only #
+        self.total_ga_time = 0
+        self.total_vqc_time = 0
+        self.retrain_time = 0
+
         self.ga_output_path = config.ga_output_path
         self.rng_seed = config.rng_seed
         self.rng = np.random.default_rng(seed=self.rng_seed)
@@ -84,30 +89,62 @@ class Model(GA_Model):
                 )
             )
 
-        seq_mat = difflib.SequenceMatcher(isjunk=lambda x: x in " -")
-        compare_arr = ["" for qubit in range(self.n_qubits)]
-        distances_arr = []
-        selected_ixs = set()
-        for _ in range(self.pop_size):
-            distances = []
-            for j, individual in enumerate(init_pop):
-                if j in selected_ixs:
-                    distances.append(0)
-                    continue
-                dist = 0.0
-                for qubit in range(self.n_qubits):
-                    seq_mat.set_seq2(compare_arr[qubit])
-                    seq_mat.set_seq1(individual.ansatz_draw[qubit])
-                    dist += 1 - seq_mat.ratio()
-                distances.append(dist / self.n_qubits)
+        ## String Distance on Drawn Circuits ##
+        # seq_mat = difflib.SequenceMatcher(isjunk=lambda x: x in " -")
+        # compare_arr = ["" for qubit in range(self.n_qubits)]
+        # distances_arr = []
+        # selected_ixs = set()
+        # for _ in range(self.pop_size):
+        #     distances = []
+        #     for j, individual in enumerate(init_pop):
+        #         if j in selected_ixs:
+        #             distances.append(0)
+        #             continue
+        #         dist = 0.0
+        #         for qubit in range(self.n_qubits):
+        #             seq_mat.set_seq2(compare_arr[qubit])
+        #             seq_mat.set_seq1(individual.ansatz_draw[qubit])
+        #             dist += 1 - seq_mat.ratio()
+        #         distances.append(dist / self.n_qubits)
 
-            distances_arr.append(np.array(distances))
-            selected_ix = np.argmax(np.mean(distances_arr, axis=0))
+        #     distances_arr.append(np.array(distances))
+        #     selected_ix = np.argmax(np.mean(distances_arr, axis=0))
+        #     selected_ixs.add(selected_ix)
+        #     self.population.append(init_pop[selected_ix])
+        #     compare_arr = init_pop[selected_ix].ansatz_draw
+
+        ## Euclidean Distance on Vectorized Circuits ##
+        selected_ixs = set()
+        for i in range(self.pop_size):
+            if i == 0:
+                random_ix = self.rng.integers(0, self.init_pop_size)
+                self.population.append(init_pop[random_ix])
+                continue
+
+            distances_arr = []
+            for j in range(len(self.population)):
+                distances_arr.append(
+                    np.array(
+                        euclidean_distances(
+                            self.population[j], 
+                            init_pop, 
+                            max_moments=self.max_moments
+                        )
+                    )
+                )
+
+            sorted_ixs = np.argsort(np.mean(distances_arr, axis=0))
+            selected_ix = sorted_ixs[-1]
+            k = 1
+            while selected_ix in selected_ixs:
+                k += 1
+                selected_ix = sorted_ixs[-k]
             selected_ixs.add(selected_ix)
             self.population.append(init_pop[selected_ix])
-            compare_arr = init_pop[selected_ix].ansatz_draw
+        
         end_time = time.time()
         exec_time = end_time - start_time
+        self.total_ga_time += exec_time
         print(f"Initial generation/selection in {exec_time:.2f} seconds")
 
     def evolve(self):
@@ -117,8 +154,21 @@ class Model(GA_Model):
         gen = 0
         while True:
             print(f"GA iteration {gen}")
+            fitness_arr_gen_start_time = time.time()
+
             self.fitness_arr = [0 for i in self.population]
+
+            fitness_arr_gen_end_time = time.time()
+            self.total_ga_time += (fitness_arr_gen_end_time - fitness_arr_gen_start_time)
+
+            vqc_start_time = time.time()
+
             self.evaluate_fitness(gen)
+
+            vqc_end_time = time.time()
+            self.total_vqc_time += (vqc_end_time - vqc_start_time)
+
+            post_process_start_time = time.time()
 
             results = self.make_results(gen)
 
@@ -133,6 +183,7 @@ class Model(GA_Model):
                 f"Best ansatz: {self.best_perf['ansatz_dicts']}"
             )
 
+            
             if (gen - self.best_perf["generation"]) > self.n_steps_patience:
                 break
             print(
@@ -140,12 +191,21 @@ class Model(GA_Model):
                 make_results_json(results, self.start_time, self.ga_output_path, gen)
             )
             gen += 1
+
+            post_process_end_time = time.time()
+            self.total_ga_time += (post_process_end_time - post_process_start_time)
+
         print(
             "filepath is: ",
             make_results_json(
                 results, self.start_time, self.ga_output_path, gen, final_flag=True
             ),
         )
+
+        post_process_end_time = time.time()
+        self.total_ga_time += (post_process_end_time - post_process_start_time)
+
+        retrain_start_time = time.time()
 
         ### Final re-training for std. dev. estimate ###
         ansatz = self.best_perf["ansatz"]
@@ -165,6 +225,17 @@ class Model(GA_Model):
         print(f"Avg fitness: {np.mean(fitness_arr)},  Std Dev: {np.std(fitness_arr)}, Std Dev of Mean: {np.std(fitness_arr) / (20**0.5)}")
         print(f"Final AUROC distribution: {auroc_arr}")
         print(f"Avg AUROC: {np.mean(auroc_arr)},  Std Dev: {np.std(auroc_arr)}, Std Dev of Mean: {np.std(auroc_arr) / (20**0.5)}")
+
+        retrain_end_time = time.time()
+        self.retrain_time = retrain_end_time - retrain_start_time
+
+        TOTAL_TIME = self.total_ga_time + self.total_vqc_time + self.retrain_time
+        print(f'Final GA (classical) time: {self.total_ga_time} seconds')
+        print(f'GA fraction of total time: {self.total_ga_time / TOTAL_TIME} %')
+        print(f'Final VQC (quantum) time: {self.total_vqc_time} seconds')
+        print(f'VQC fraction of total time: {self.total_vqc_time / TOTAL_TIME} %')
+        print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time} seconds')
+        print(f'Retrain fraction of total time: {self.retrain_time / TOTAL_TIME} %')
 
     def evaluate_fitness(self, gen):
         """
@@ -205,6 +276,7 @@ class Model(GA_Model):
 
         end_time = time.time()
         exec_time = end_time - start_time
+        self.total_vqc_time += exec_time
         print(f"QML Optimization in {exec_time:.2f} seconds")
 
         if self.best_perf["fitness"] < np.amax(self.fitness_arr):
@@ -226,6 +298,7 @@ class Model(GA_Model):
             self.best_perf["index"] = np.argmax(self.fitness_arr).item()
 
     def make_results(self, gen):
+        start_time = time.time()
         ### Euclidean distances ###
         distances_from_best = euclidean_distances(self.population[np.argmax(self.fitness_arr)], self.population)
         destdir_curves = os.path.join(self.ga_output_path, "ga_curves", "run-%s" % self.start_time)
