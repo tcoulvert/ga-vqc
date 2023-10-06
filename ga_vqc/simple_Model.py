@@ -19,7 +19,7 @@ class Model(GA_Model):
     """
     Container for all the logic of the GA Model.
 
-    TODO: change the I assignment to a random assignment. check for back-to-back CNOTs bc compile to I
+    TODO: change the I assignment to a random assignment.
     """
 
     def __init__(self, config):
@@ -72,7 +72,6 @@ class Model(GA_Model):
         self.vqc_config["n_ansatz_qubits"] = self.n_qubits
         self.vqc_config["start_time"] = self.start_time
 
-        
         self.generate_initial_pop()
 
     def generate_initial_pop(self):
@@ -92,30 +91,6 @@ class Model(GA_Model):
                     self.rng_seed,
                 )
             )
-
-        ## String Distance on Drawn Circuits ##
-        # seq_mat = difflib.SequenceMatcher(isjunk=lambda x: x in " -")
-        # compare_arr = ["" for qubit in range(self.n_qubits)]
-        # distances_arr = []
-        # selected_ixs = set()
-        # for _ in range(self.pop_size):
-        #     distances = []
-        #     for j, individual in enumerate(init_pop):
-        #         if j in selected_ixs:
-        #             distances.append(0)
-        #             continue
-        #         dist = 0.0
-        #         for qubit in range(self.n_qubits):
-        #             seq_mat.set_seq2(compare_arr[qubit])
-        #             seq_mat.set_seq1(individual.ansatz_draw[qubit])
-        #             dist += 1 - seq_mat.ratio()
-        #         distances.append(dist / self.n_qubits)
-
-        #     distances_arr.append(np.array(distances))
-        #     selected_ix = np.argmax(np.mean(distances_arr, axis=0))
-        #     selected_ixs.add(selected_ix)
-        #     self.population.append(init_pop[selected_ix])
-        #     compare_arr = init_pop[selected_ix].ansatz_draw
 
         ## Euclidean Distance on Vectorized Circuits ##
         selected_ixs = set()
@@ -177,8 +152,13 @@ class Model(GA_Model):
             results = self.make_results(gen)
 
             parents = self.select()
-            self.mate(parents)
-            self.immigrate()
+
+            num_children, num_immigrants = self.anneal_manager(;fn)
+
+            children = self.mate(parents, num_children)
+            immigrants = self.immigrate(num_immigrants)
+
+            self.population.extend(children, immigrants)
             # self.check_max_moments()
 
             print(
@@ -404,75 +384,57 @@ class Model(GA_Model):
                 )
 
         # Perform the swap with neighboring parents
-        # swap_set = set()
+        swap_set = set()
         for swap_ix in swap_ixs:  # set up for odd number of parents
-            children = [copy.deepcopy(parents[swap_ix[0]]), copy.deepcopy(parents[swap_ix[1]])]
-            moment_A = self.rng.integers(children[0].n_moments) 
-            moment_B = self.rng.integers(children[1].n_moments)
-            # children = {
-            #     "child_A": copy.deepcopy(parents[swap_ix[0]]), 
-            #     "child_B": copy.deepcopy(parents[swap_ix[1]])
-            # }
-            # print(f"Pre-mateswap ansatz: {children}")
-            # moment_A = self.rng.integers(children["child_A"].n_moments) 
-            # moment_B = self.rng.integers(children["child_B"].n_moments)
-            # qubit_A = qubit_B = self.rng.integers(self.n_qubits).item()
-            # swap_set.add(qubit_A)
+            children = {
+                "child_A": copy.deepcopy(parents[swap_ix[0]]), 
+                "child_B": copy.deepcopy(parents[swap_ix[1]])
+            }
 
+            print(f"Pre-mateswap ansatz: {children}")
 
-            # def check_gate(qubit_str):
-            #     if qubit_str.find("_") > 0:
-            #         return int(qubit_str[-1])
-            #     return -1
+            moment_A = self.rng.integers(children["child_A"].n_moments) 
+            moment_B = self.rng.integers(children["child_B"].n_moments)
+            qubit_A = qubit_B = self.rng.integers(self.n_qubits).item()
+            swap_set.add(qubit_A)
 
+            def check_gate(qubit_str, qubit_num):
+                if qubit_str.find("_") > 0:
+                    return int(qubit_str[-1])
+                return -1
 
-            # # USE RECURSION !!!!!!!!
-            # while True:
-            #     qubit_B_new = check_gate(
-            #         children["child_A"][moment_A, qubit_A]
-            #     )
-            #     qubit_A_new = check_gate(
-            #         children["child_B"][moment_B, qubit_B]
-            #     )
+            while True:
+                A_link = check_gate(
+                    children["child_A"][moment_A, qubit_A],
+                    qubit_A
+                )
+                B_link = check_gate(
+                    children["child_B"][moment_B, qubit_B],
+                    qubit_B
+                )
 
-            #     if qubit_A_new == -1:
-            #         if qubit_B_new == -1:
-            #             break
-            #         # need to check moment_B, qubit_A_new
+                if (A_link == qubit_A and B_link == qubit_B) or (A_link in swap_set and B_link in swap_set):
+                    break
+                else:
+                    if A_link >= 0:
+                        swap_set.add(A_link)
+                        qubit_B = A_link
+                    if B_link >= 0:
+                        swap_set.add(B_link)
+                        qubit_A = B_link
 
-            #     if qubit_A_new == qubit_B_new:
-            #         swap_set.add(qubit_A_new)
-            #         break
+            for qubit in swap_set:
+                children["child_A"][moment_A, qubit] = parents[swap_ix[1]][moment_B, qubit]
+                children["child_B"][moment_B, qubit] = parents[swap_ix[0]][moment_A, qubit]
 
-            #     i0_new = i1_new = -1
-            #     if children[0][moment_A, qubit_A].find("_") > 0:
-            #         i1_new = int(children[0][moment_A, qubit_A][-1])
-            #         swap_set.add(i1_new)
-            #     if children[1][moment_B, qubit_B].find("_") > 0:
-            #         i0_new = int(children[1][moment_B, qubit_B][-1])
-            #         if i0_new == i1_new:
-            #             break
-            #         swap_set.add(i0_new)
-            #     qubit_A, qubit_B = i0_new, i1_new
+            print(f"Post-mateswap ansatz: {children}")
 
-            #     if qubit_A < 0 or qubit_B < 0:
-            #         break
-
-            # for qubit in swap_set:
-            #     children[0][moment_A, qubit] = parents[swap_ix[1]][moment_B, qubit]
-            #     children[1][moment_B, qubit] = parents[swap_ix[0]][moment_A, qubit]
-
-            # print(f"Post-mateswap ansatz: {children}")
-            # ADDED IN FOR MOMENT SWAP
-            # children["child_A"][moment_A] = parents[swap_ix[1]][moment_B]
-            # children["child_B"][moment_B] = parents[swap_ix[0]][moment_A]
-            children[0][moment_A] = parents[swap_ix[1]][moment_B]
-            children[1][moment_B] = parents[swap_ix[0]][moment_A]
             children_arr.extend(children)
 
         for child in children_arr:
-            if len(self.population) < self.pop_size - self.n_new_individuals:
-                self.mutate(child)
+            self.mutate(child)
+
+        return children_arr
 
     def deep_permutation(self, arr):
         arr_copy = [i for i in arr]
@@ -493,33 +455,71 @@ class Model(GA_Model):
             i: selected qubit
             k: selected gate
         """
-        for _ in range(self.n_mutations):
-            if (
-                ansatz.n_moments < self.max_moments
-                and self.rng.random() < self.add_moment_prob
-            ):
-                ansatz.add_moment(method='duplicate')
-            
-            moment = self.rng.integers(ansatz.n_moments)
-            qubit = self.rng.integers(self.n_qubits)
-            ansatz.mutate(moment, qubit)
+        ansatz_backup = copy.deepcopy(ansatz)
+        n_mutations = self.n_mutations
+        count = 0
+        while True:
+            if count == 5:
+                n_mutations += 1
+                count = 0
+            for _ in range(n_mutations):
+                if (
+                    ansatz.n_moments < self.max_moments
+                    and self.rng.random() < self.add_moment_prob
+                ):
+                    ansatz.add_moment(method='duplicate')
+                
+                moment = self.rng.integers(ansatz.n_moments)
+                qubit = self.rng.integers(self.n_qubits)
+                ansatz.mutate(moment, qubit)
 
-        self.population.append(ansatz)
+            ansatz_vector = tuple(create_vector(ansatz, return_type='list'))
+            if ansatz_vector in self.set_of_all_circuits:
+                ansatz = copy.deepcopy(ansatz_backup)
+                count += 1
+                continue
+            break
 
-    def immigrate(self):
+    def immigrate(self, n_individuals):
         """
         Adds in new individuals with every generation, in order to keep up the overall population diversity.
         """
-        for _ in range(self.n_new_individuals):
-            self.population.append(
-                Individual(
-                    self.n_qubits,
-                    # self.rng.integers(1, self.max_moments + 1),
-                    self.max_moments,
-                    self.genepool,
-                    self.rng_seed,
+        immigrant_arr = []
+        for _ in range(n_individuals):
+            ansatz_vectors_arr = []
+            distances_arr = []
+            for __ in range(100):
+                while True:
+                    ansatz_vector = tuple(create_vector(ansatz, return_type='list'))
+                    if ansatz_vector in self.set_of_all_circuits:
+                        ansatz = Individual(
+                            self.n_qubits,
+                            # self.rng.integers(1, self.max_moments + 1),
+                            self.max_moments,
+                            self.genepool,
+                            self.rng_seed,
+                        )
+                        continue
+
+                    ansatz_vectors_arr.append(ansatz_vector)
+                    break
+            for j in range(100):
+                distances_arr.append(
+                    np.array(
+                        euclidean_distances(
+                            ansatz_vectors_arr[j], 
+                            self.set_of_all_circuits, 
+                            max_moments=self.max_moments
+                        )
+                    )
                 )
+            ansatz = ansatz_vectors_arr[np.argmax(np.mean(distances_arr, axis=0))]
+            immigrant_arr.append(
+                ansatz
             )
+
+        return immigrant_arr
+            
 
     def check_max_moments(self):
         """

@@ -1,4 +1,5 @@
 import copy
+import re
 
 import numpy as np
 import pennylane as qml
@@ -176,20 +177,77 @@ class Individual(GA_Individual):
         return qml.expval(qml.PauliZ(wires=[self.n_qubits - 1]))
 
     def draw_ansatz(self):
-        self.ansatz_draw = []
-        full_ansatz_draw = qml.draw(
+        self.ansatz_draw = qml.draw(
             qml.QNode(
-                self.ansatz_circuit,
+                qml.compile(self.ansatz_circuit),
                 qml.device("default.qubit", wires=self.n_qubits, shots=1),
             ),
             decimals=None,
             expansion_strategy="device",
             show_all_wires=True,
         )(self.params, event=[i for i in range(self.n_qubits)])[:-3]
-        indices = [i for i, c in enumerate(full_ansatz_draw) if c == ":"]
-        for _ in range(self.n_qubits):
-            self.ansatz_draw.append(full_ansatz_draw[: indices[1] - 2][3:-2])
-            full_ansatz_draw = full_ansatz_draw[indices[1] - 1 :]
+
+        self.update_ansatz_dicts()
+
+    def update_ansatz_dicts(self):
+        """
+        Update the ansatz from the drawn ansatz after compiling the circuit. 
+
+        TODO: Figure out how to make this general for any gate (or at 
+                minimum any gate the compiler spits out)
+        """
+        self.ansatz_dicts = []
+
+        ix_arr = [(0, -1)] + [m.span() for m in re.finditer('\n', self.ansatz_draw)]
+        qubit_array = [self.ansatz_draw[ix_arr[i][1]+1 : ix_arr[i+1][0]] for i in range(len(ix_arr) - 1)]
+        # print(qubit_array)
+
+        q = 0
+        for qubit in qubit_array:
+            multi_qubit_gates = [m.start() for m in re.finditer('╭')] + [m.start() for m in re.finditer('╰')]
+            multi_qubit_gates.sort()
+
+            mask_ixs_set = set([m.start() for m in re.finditer('─')])
+            all_ixs = list(range(len(qubit)))
+            gate_ixs = [i for i in all_ixs if i not in mask_ixs_set]
+
+            skip_flag = False
+            moment = 0
+            for j in gate_ixs:
+                if skip_flag:
+                    skip_flag = False
+                    continue
+                
+                if len(self.ansatz_dicts) <= moment:
+                    self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
+
+                # THIS LOGIC SPECIFIC TO ONE GENEPOOL (RX, RY, RZ, Rϕ, CNOT)
+                if qubit[j] == 'R':
+                    skip_flag = True
+
+                    self.ansatz_dicts[moment][q] = 'R' + qubit[j+1]
+                    moment += 1
+                    continue
+
+                if qubit[j] == '╭' or qubit[j] == '╰':
+                    skip_flag = True
+
+                    if qubit[j+1] == 'X':
+                        self.ansatz_dicts[moment][q] = 'CNOT_T'
+                    else:       # qubit[j+1] == '●'
+                        self.ansatz_dicts[moment][q] = 'CNOT_C'
+                    moment += 1
+                    continue
+            
+            q += 1
+
+        for moment_dict in self.ansatz_dicts:
+            for k, v in moment_dict.items():
+                if v == 0:
+                    moment_dict[k] = 'I'
+
+        self.n_moments = len(self.ansatz_dicts)
+        self.convert_to_qml()
 
     def add_moment(self, method='random', **kwargs):
         """
@@ -201,6 +259,7 @@ class Individual(GA_Individual):
             raise Exception("Method not yet supported.")
         elif method == 'duplicate':
             self.ansatz_dicts.append(copy.deepcopy(self.ansatz_dicts[moment]))
+            self.n_moments += 1
         elif method == 'pad':
             for _ in range(kwargs['num_pad']):
                 self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
@@ -208,7 +267,6 @@ class Individual(GA_Individual):
         else:
             raise Exception("Method not supported.")
         
-        self.n_moments += 1
         self.convert_to_qml()
         self.draw_ansatz()
 

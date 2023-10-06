@@ -7,7 +7,10 @@ def euclidean_distances(ansatz_comp, population, max_moments=None):
     vector_comp = create_vector(ansatz_comp, max_moments=max_moments)
     distances = []
     for ansatz in population:
-        vector = create_vector(ansatz)
+        if type(ansatz) == 'list':
+            vector = np.array(ansatz)
+        else:
+            vector = create_vector(ansatz)
         distances.append(
             np.sum(
                 np.power(
