@@ -153,7 +153,7 @@ class Model(GA_Model):
 
             parents = self.select()
 
-            num_children, num_immigrants = self.anneal_manager(;fn)
+            num_children, num_immigrants = self.anneal_manager(gen)
 
             children = self.mate(parents, num_children)
             immigrants = self.immigrate(num_immigrants)
@@ -520,6 +520,12 @@ class Model(GA_Model):
 
         return immigrant_arr
             
+    def anneal_manager(self, gen):
+        num_children = self.pop_size // 2
+        num_immigrants = self.pop_size - num_children
+        
+        return num_children, num_immigrants
+
 
     def check_max_moments(self):
         """

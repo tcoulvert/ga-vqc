@@ -137,7 +137,7 @@ class Individual(GA_Individual):
                         moment_dict[self.ansatz_dicts[moment][qubit][:_ix]].append([qubit, int(q_p)])
                     else:
                         moment_dict[self.ansatz_dicts[moment][qubit][:_ix]].append([int(q_p), qubit])
-
+            
             for gate_name in moment_dict.keys():
                 if len(moment_dict[gate_name]) == 0 or gate_name == "I":
                     continue
@@ -177,16 +177,17 @@ class Individual(GA_Individual):
         return qml.expval(qml.PauliZ(wires=[self.n_qubits - 1]))
 
     def draw_ansatz(self):
-        self.ansatz_draw = qml.draw(
-            qml.QNode(
-                qml.compile(self.ansatz_circuit),
+        qnode = qml.QNode(
+                qml.compile(basis_set=self.genepool.gate_list(), num_passes=3)(self.ansatz_circuit),
                 qml.device("default.qubit", wires=self.n_qubits, shots=1),
-            ),
+            )
+        self.ansatz_draw = qml.draw(
+            qnode,
             decimals=None,
             expansion_strategy="device",
             show_all_wires=True,
-        )(self.params, event=[i for i in range(self.n_qubits)])[:-3]
-
+        )(self.params)[:-3]
+        
         self.update_ansatz_dicts()
 
     def update_ansatz_dicts(self):
@@ -200,20 +201,25 @@ class Individual(GA_Individual):
 
         ix_arr = [(0, -1)] + [m.span() for m in re.finditer('\n', self.ansatz_draw)]
         qubit_array = [self.ansatz_draw[ix_arr[i][1]+1 : ix_arr[i+1][0]] for i in range(len(ix_arr) - 1)]
-        # print(qubit_array)
 
-        q = 0
+        def find_other_qubit(qubit_array, qubit_ix, gate_ix):
+            other_qubit = 0
+            for q_ix in range(qubit_ix, len(qubit_array)):
+                if qubit_array[q_ix][gate_ix] == '╰':
+                    other_qubit = q_ix
+                    break
+
+            return other_qubit
+
+        qubit_ix = 0
         for qubit in qubit_array:
-            multi_qubit_gates = [m.start() for m in re.finditer('╭')] + [m.start() for m in re.finditer('╰')]
-            multi_qubit_gates.sort()
-
-            mask_ixs_set = set([m.start() for m in re.finditer('─')])
+            mask_ixs_set = set([m.start() for m in re.finditer('─', qubit)])
             all_ixs = list(range(len(qubit)))
             gate_ixs = [i for i in all_ixs if i not in mask_ixs_set]
 
             skip_flag = False
             moment = 0
-            for j in gate_ixs:
+            for gate_ix in gate_ixs:
                 if skip_flag:
                     skip_flag = False
                     continue
@@ -222,24 +228,29 @@ class Individual(GA_Individual):
                     self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
 
                 # THIS LOGIC SPECIFIC TO ONE GENEPOOL (RX, RY, RZ, Rϕ, CNOT)
-                if qubit[j] == 'R':
+                #  -> change to just search over self.genepool.gates array for matching sequence
+                if qubit[gate_ix] == 'R':
                     skip_flag = True
 
-                    self.ansatz_dicts[moment][q] = 'R' + qubit[j+1]
+                    if qubit[gate_ix+1] == 'ϕ':
+                        self.ansatz_dicts[moment][qubit_ix] = 'PhaseShift' # Is there a way to get qml.draw() to use the actual gate names?
+                    else:
+                        self.ansatz_dicts[moment][qubit_ix] = 'R' + qubit[gate_ix+1]
                     moment += 1
                     continue
 
-                if qubit[j] == '╭' or qubit[j] == '╰':
+                if qubit[gate_ix] == '╭':
                     skip_flag = True
 
-                    if qubit[j+1] == 'X':
-                        self.ansatz_dicts[moment][q] = 'CNOT_T'
+                    other_qubit = find_other_qubit(qubit_array, qubit_ix, gate_ix)
+                    if qubit[gate_ix+1] == 'X':
+                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_T-' + other_qubit
                     else:       # qubit[j+1] == '●'
-                        self.ansatz_dicts[moment][q] = 'CNOT_C'
+                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_C-' + other_qubit
                     moment += 1
                     continue
             
-            q += 1
+            qubit_ix += 1
 
         for moment_dict in self.ansatz_dicts:
             for k, v in moment_dict.items():

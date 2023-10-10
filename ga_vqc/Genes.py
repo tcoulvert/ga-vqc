@@ -30,6 +30,9 @@ class Genepool:
         for k, v in gates.items():
             self.gates.append(Gate(k, v[0], v[1]))
 
+    def gate_list(self) -> list:
+        return [gate.name for gate in self.gates]
+
     def n_params(self, gate_name) -> int:
         if gate_name is None:
             raise Exception("Cannot look for None-type gate.") 
