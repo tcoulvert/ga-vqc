@@ -172,6 +172,9 @@ class Individual(GA_Individual):
         self.params = pnp.array(self.params, dtype=object, requires_grad=True)
 
     def ansatz_circuit(self, params, event=None):
+        print(self.ansatz_dicts)
+        print(self.ansatz_qml)
+        print(self.ansatz_draw)
         for m in self.ansatz_qml:
             exec(m)
         return qml.expval(qml.PauliZ(wires=[self.n_qubits - 1]))
@@ -195,60 +198,96 @@ class Individual(GA_Individual):
         Update the ansatz from the drawn ansatz after compiling the circuit. 
 
         TODO: Figure out how to make this general for any gate (or at 
-                minimum any gate the compiler spits out)
+                minimum any gate the compiler spits out) -> edit specific logic to use genepool
         """
         self.ansatz_dicts = []
 
-        ix_arr = [(0, -1)] + [m.span() for m in re.finditer('\n', self.ansatz_draw)]
-        qubit_array = [self.ansatz_draw[ix_arr[i][1]+1 : ix_arr[i+1][0]] for i in range(len(ix_arr) - 1)]
+        ix_arr = [(None, 0)] + [m.span() for m in re.finditer('\n', self.ansatz_draw)] + [(-1, None)]
+        qubit_array = [self.ansatz_draw[ix_arr[i][1] : ix_arr[i+1][0]] for i in range(len(ix_arr) - 1)]
+        # print('------------------------------')
+        # print('------------------------------')
+        # print(ix_arr)
+        # print('------------------------------')
+        # print(qubit_array)
+        # print('------------------------------')
+        # print(self.ansatz_draw)
+        # print('------------------------------')
+        # print('------------------------------')
 
         def find_other_qubit(qubit_array, qubit_ix, gate_ix):
-            other_qubit = 0
-            for q_ix in range(qubit_ix, len(qubit_array)):
+            other_qubit = -1
+            for q_ix in range(qubit_ix+1, len(qubit_array)):
                 if qubit_array[q_ix][gate_ix] == '╰':
                     other_qubit = q_ix
                     break
 
             return other_qubit
+        
+        def moment_array(qubit_array):
+            qubit_moments = dict.fromkeys(range(self.n_qubits), [])
+            moment = 0
+            for string_ix in range(qubit_array[0]):
+                dash_count = 0
+                non_dash_qubits = []
+                for q_ix in range(len(qubit_array)):
+                    if qubit_array[q_ix][string_ix] == '─':
+                        dash_count += 1
+                        non_dash_qubits.append(q_ix)
+                if dash_count == len(qubit_array):
+                    moment_flag = False
+                    continue
+                elif moment_flag:
+                    continue
+                else:
+                    for q_ix in non_dash_qubits:
+                        qubit_moments[q_ix].append(moment)
+                    moment += 1
+                    moment_flag = True
+
+            return qubit_moments, moment
 
         qubit_ix = 0
+        qubit_moments, n_moments = moment_array(qubit_array)
+        for _ in range(n_moments):
+            self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
         for qubit in qubit_array:
-            mask_ixs_set = set([m.start() for m in re.finditer('─', qubit)])
-            all_ixs = list(range(len(qubit)))
-            gate_ixs = [i for i in all_ixs if i not in mask_ixs_set]
-
             skip_flag = False
-            moment = 0
-            for gate_ix in gate_ixs:
+            gate_ix = 0
+            for str_ix in len(qubit):
                 if skip_flag:
                     skip_flag = False
                     continue
                 
-                if len(self.ansatz_dicts) <= moment:
-                    self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
-
                 # THIS LOGIC SPECIFIC TO ONE GENEPOOL (RX, RY, RZ, Rϕ, CNOT)
                 #  -> change to just search over self.genepool.gates array for matching sequence
-                if qubit[gate_ix] == 'R':
+                if qubit[str_ix] == 'R':
                     skip_flag = True
+                    moment = qubit_moments[qubit_ix][gate_ix]
 
-                    if qubit[gate_ix+1] == 'ϕ':
+                    if qubit[str_ix+1] == 'ϕ':
                         self.ansatz_dicts[moment][qubit_ix] = 'PhaseShift' # Is there a way to get qml.draw() to use the actual gate names?
                     else:
-                        self.ansatz_dicts[moment][qubit_ix] = 'R' + qubit[gate_ix+1]
-                    moment += 1
+                        self.ansatz_dicts[moment][qubit_ix] = 'R' + qubit[str_ix+1]
+                    gate_ix += 1
                     continue
-
-                if qubit[gate_ix] == '╭':
+                elif qubit[str_ix] == '╭':
                     skip_flag = True
+                    moment = qubit_moments[qubit_ix][gate_ix]
 
-                    other_qubit = find_other_qubit(qubit_array, qubit_ix, gate_ix)
-                    if qubit[gate_ix+1] == 'X':
-                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_T-' + other_qubit
+                    other_qubit_ix = find_other_qubit(qubit_array, qubit_ix, str_ix)
+                    if qubit[str_ix+1] == 'X':
+                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_T-' + str(other_qubit_ix)
+                        self.ansatz_dicts[moment][other_qubit_ix] = 'CNOT_C-' + str(qubit_ix)
                     else:       # qubit[j+1] == '●'
-                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_C-' + other_qubit
-                    moment += 1
+                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_C-' + str(other_qubit_ix)
+                        self.ansatz_dicts[moment][other_qubit_ix] = 'CNOT_T-' + str(qubit_ix)
+                    gate_ix += 1
                     continue
+                elif qubit[str_ix] == '╰':
+                    skip_flag = True
+                    gate_ix += 1
+                elif qubit[str_ix] == '│':
+                    gate_ix += 1
             
             qubit_ix += 1
 
@@ -275,9 +314,18 @@ class Individual(GA_Individual):
             for _ in range(kwargs['num_pad']):
                 self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
                 self.n_moments += 1
+        elif method == 'pad_NO_UPDATE':
+            for _ in range(kwargs['num_pad']):
+                self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
+                self.n_moments += 1
         else:
             raise Exception("Method not supported.")
         
+        if method != 'pad_NO_UPDATE':
+            self.convert_to_qml()
+            self.draw_ansatz()
+
+    def update(self):
         self.convert_to_qml()
         self.draw_ansatz()
 

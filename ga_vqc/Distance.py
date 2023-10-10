@@ -7,10 +7,12 @@ def euclidean_distances(ansatz_comp, population, max_moments=None):
     vector_comp = create_vector(ansatz_comp, max_moments=max_moments)
     distances = []
     for ansatz in population:
-        if type(ansatz) == 'list':
-            vector = np.array(ansatz)
-        else:
-            vector = create_vector(ansatz)
+        vector = create_vector(ansatz, max_moments=max_moments)
+        print(max_moments)
+        print(len(vector_comp))
+        print(len(vector))
+        print(ansatz_comp.n_moments)
+        print(ansatz.n_moments)
         distances.append(
             np.sum(
                 np.power(
@@ -19,6 +21,7 @@ def euclidean_distances(ansatz_comp, population, max_moments=None):
                 )
             )**0.5
         )
+        ansatz.update()
     
     return distances
 
@@ -45,8 +48,11 @@ def tsne(population, perplexity=2, rng_seed=None):
     return S_t_sne.T
 
 def create_vector(ansatz, max_moments=None, return_type='numpy'):
+    """
+    TODO: Change pad from affecting circuit to happeneing automatically here
+    """
     if max_moments is not None and ansatz.n_moments != max_moments:
-        ansatz.add_moment('pad', num_pad=(max_moments - ansatz.n_moments))
+        ansatz.add_moment('pad_NO_UPDATE', num_pad=(max_moments - ansatz.n_moments))
 
     vector = []
 
