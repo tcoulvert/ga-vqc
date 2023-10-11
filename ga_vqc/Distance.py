@@ -16,7 +16,7 @@ def euclidean_distances(ansatz_comp, population, max_moments=None):
                 )
             )**0.5
         )
-        ansatz.update()
+        ansatz.update_ansatz_dicts()
     
     return distances
 
@@ -46,13 +46,13 @@ def create_vector(ansatz, max_moments=None, return_type='numpy'):
     """
     TODO: Change pad from affecting circuit to happeneing automatically here
     """
-    if max_moments is not None and ansatz.n_moments != max_moments:
-        ansatz.add_moment('pad_NO_UPDATE', num_pad=(max_moments - ansatz.n_moments))
+    # if max_moments is not None and ansatz.n_moments != max_moments:
+    #     ansatz.add_moment('pad_NO_UPDATE', num_pad=(max_moments - ansatz.n_moments))
 
     vector = []
 
     ### single-qubit gates ###
-    for moment in range(ansatz.n_moments):
+    for moment in range(max_moments):
         for qubit in range(ansatz.n_qubits):
             one_qubit_states = []
             for _ in range(
@@ -61,14 +61,17 @@ def create_vector(ansatz, max_moments=None, return_type='numpy'):
                 )
             ):
                 one_qubit_states.extend([0])
-            if ansatz.genepool.n_qubits(ansatz[moment][qubit]) != 1:
+            # if moment >= ansatz.max_moments:
+            #     vector.extend([i for i in one_qubit_states])
+            #     continue
+            if moment >= ansatz.n_moments or ansatz.genepool.n_qubits(ansatz[moment][qubit]) != 1:
                 vector.extend([i for i in one_qubit_states])
                 continue
             one_qubit_states[ansatz.genepool.index_of(ansatz[moment][qubit])] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
             vector.extend([i for i in one_qubit_states])
 
     ### 2-qubit gates ###
-    for moment in range(ansatz.n_moments):
+    for moment in range(max_moments):
         # [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1), ('I', 'I')]
         two_qubit_states = []
         for _ in range(
@@ -78,8 +81,10 @@ def create_vector(ansatz, max_moments=None, return_type='numpy'):
         ):
             two_qubit_states.extend([0 for __ in range(np.math.factorial(ansatz.n_qubits) + 1)])
             two_qubit_states[-1] = 1
-        
+
         for qubit in range(ansatz.n_qubits):
+            if moment >= ansatz.n_moments:
+                break
             if ansatz[moment][qubit].find('_') > 0: # Doesn't work for passing more than 1 2-qubit gate, and only works for 'control'/'target' gates
                 two_qubit_states[-1] = 0
                 if ansatz[moment][qubit][-3] == 'C':

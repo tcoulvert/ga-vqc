@@ -187,7 +187,7 @@ class Individual(GA_Individual):
             max_length=1e6,
             expansion_strategy="device",
             show_all_wires=True,
-        )(self.params)[:-3]
+        )(self.params, event=[i for i in range(1, self.n_qubits+1)])[:-3]
         
         self.update_ansatz_dicts()
 
@@ -309,9 +309,9 @@ class Individual(GA_Individual):
             self.convert_to_qml()
             self.draw_ansatz()
 
-    def update(self):
-        self.convert_to_qml()
-        self.draw_ansatz()
+    # def update(self):
+    #     self.convert_to_qml()
+    #     self.draw_ansatz()
 
     def mutate(self, moment, qubit):
         """
