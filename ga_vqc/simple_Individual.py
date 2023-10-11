@@ -172,9 +172,6 @@ class Individual(GA_Individual):
         self.params = pnp.array(self.params, dtype=object, requires_grad=True)
 
     def ansatz_circuit(self, params, event=None):
-        print(self.ansatz_dicts)
-        print(self.ansatz_qml)
-        print(self.ansatz_draw)
         for m in self.ansatz_qml:
             exec(m)
         return qml.expval(qml.PauliZ(wires=[self.n_qubits - 1]))
@@ -187,6 +184,7 @@ class Individual(GA_Individual):
         self.ansatz_draw = qml.draw(
             qnode,
             decimals=None,
+            max_length=1e6,
             expansion_strategy="device",
             show_all_wires=True,
         )(self.params)[:-3]
@@ -202,17 +200,8 @@ class Individual(GA_Individual):
         """
         self.ansatz_dicts = []
 
-        ix_arr = [(None, 0)] + [m.span() for m in re.finditer('\n', self.ansatz_draw)] + [(-1, None)]
+        ix_arr = [(None, 0)] + [(bar.start()+1, n.end()) for bar, n in zip(re.finditer('┤', self.ansatz_draw), re.finditer('\n', self.ansatz_draw))] + [(-1, None)]
         qubit_array = [self.ansatz_draw[ix_arr[i][1] : ix_arr[i+1][0]] for i in range(len(ix_arr) - 1)]
-        # print('------------------------------')
-        # print('------------------------------')
-        # print(ix_arr)
-        # print('------------------------------')
-        # print(qubit_array)
-        # print('------------------------------')
-        # print(self.ansatz_draw)
-        # print('------------------------------')
-        # print('------------------------------')
 
         def find_other_qubit(qubit_array, qubit_ix, gate_ix):
             other_qubit = -1
@@ -226,12 +215,16 @@ class Individual(GA_Individual):
         def moment_array(qubit_array):
             qubit_moments = dict.fromkeys(range(self.n_qubits), [])
             moment = 0
-            for string_ix in range(qubit_array[0]):
+            moment_flag = False
+            for string_ix in range(len(qubit_array[0])):
                 dash_count = 0
                 non_dash_qubits = []
                 for q_ix in range(len(qubit_array)):
-                    if qubit_array[q_ix][string_ix] == '─':
+                    # print(q_ix)
+                    # print(qubit_array)
+                    if qubit_array[q_ix][string_ix] == '─' or qubit_array[q_ix][string_ix] == '┤':
                         dash_count += 1
+                    else:
                         non_dash_qubits.append(q_ix)
                 if dash_count == len(qubit_array):
                     moment_flag = False
@@ -246,22 +239,19 @@ class Individual(GA_Individual):
 
             return qubit_moments, moment
 
-        qubit_ix = 0
         qubit_moments, n_moments = moment_array(qubit_array)
         for _ in range(n_moments):
             self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
+        qubit_ix = 0
         for qubit in qubit_array:
-            skip_flag = False
             gate_ix = 0
-            for str_ix in len(qubit):
-                if skip_flag:
-                    skip_flag = False
-                    continue
-                
+            for str_ix in range(len(qubit)):
                 # THIS LOGIC SPECIFIC TO ONE GENEPOOL (RX, RY, RZ, Rϕ, CNOT)
                 #  -> change to just search over self.genepool.gates array for matching sequence
+                if qubit[str_ix] == '─':
+                    continue
+
                 if qubit[str_ix] == 'R':
-                    skip_flag = True
                     moment = qubit_moments[qubit_ix][gate_ix]
 
                     if qubit[str_ix+1] == 'ϕ':
@@ -271,7 +261,6 @@ class Individual(GA_Individual):
                     gate_ix += 1
                     continue
                 elif qubit[str_ix] == '╭':
-                    skip_flag = True
                     moment = qubit_moments[qubit_ix][gate_ix]
 
                     other_qubit_ix = find_other_qubit(qubit_array, qubit_ix, str_ix)
@@ -283,11 +272,6 @@ class Individual(GA_Individual):
                         self.ansatz_dicts[moment][other_qubit_ix] = 'CNOT_T-' + str(qubit_ix)
                     gate_ix += 1
                     continue
-                elif qubit[str_ix] == '╰':
-                    skip_flag = True
-                    gate_ix += 1
-                elif qubit[str_ix] == '│':
-                    gate_ix += 1
             
             qubit_ix += 1
 

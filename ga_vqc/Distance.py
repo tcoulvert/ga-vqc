@@ -8,11 +8,6 @@ def euclidean_distances(ansatz_comp, population, max_moments=None):
     distances = []
     for ansatz in population:
         vector = create_vector(ansatz, max_moments=max_moments)
-        print(max_moments)
-        print(len(vector_comp))
-        print(len(vector))
-        print(ansatz_comp.n_moments)
-        print(ansatz.n_moments)
         distances.append(
             np.sum(
                 np.power(

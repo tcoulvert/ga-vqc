@@ -91,8 +91,9 @@ class Model(GA_Model):
                     self.rng_seed,
                 )
             )
-            if init_pop[-1].n_moments > self.max_moments:
-                self.max_moments = init_pop[-1].n_moments
+        for i in range(self.init_pop_size):
+            if init_pop[i].n_moments > self.max_moments:
+                self.max_moments = init_pop[i].n_moments
 
         ## Euclidean Distance on Vectorized Circuits ##
         selected_ixs = set()
