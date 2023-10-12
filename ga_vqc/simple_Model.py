@@ -161,7 +161,8 @@ class Model(GA_Model):
             children = self.mate(parents, num_children)
             immigrants = self.immigrate(num_immigrants)
 
-            self.population.extend(children, immigrants)
+            self.population.extend(children)
+            self.population.extend(immigrants)
             # self.check_max_moments()
 
             print(
@@ -235,10 +236,11 @@ class Model(GA_Model):
         ix = 0
         args_arr = []
         for ansatz in self.population:
-            self.set_of_all_circuits.add(tuple(create_vector(ansatz, return_type='list')))
+            self.set_of_all_circuits.add(tuple(create_vector(ansatz, self.max_moments, return_type='list')))
 
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
             vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
+            vqc_config_ansatz["ansatz_draw"] = ansatz.ansatz_draw
             vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
             vqc_config_ansatz["params"] = ansatz.params
             vqc_config_ansatz["ix"] = ix
@@ -288,9 +290,8 @@ class Model(GA_Model):
             self.best_perf["index"] = np.argmax(self.fitness_arr).item()
 
     def make_results(self, gen):
-        start_time = time.time()
         ### Euclidean distances ###
-        distances_from_best = euclidean_distances(self.population[np.argmax(self.fitness_arr)], self.population)
+        distances_from_best = euclidean_distances(self.population[np.argmax(self.fitness_arr)], self.population, self.max_moments)
         destdir_curves = os.path.join(self.ga_output_path, "ga_curves", "run-%s" % self.start_time)
         if not os.path.exists(destdir_curves):
             os.makedirs(destdir_curves)
@@ -310,7 +311,7 @@ class Model(GA_Model):
         plt.savefig(filepath_euclid, format="png")
         plt.close(0)
         ### tSNE clustering ###
-        data_tsne = tsne(self.population, rng_seed=self.rng_seed, perplexity=2)
+        data_tsne = tsne(self.population, self.max_moments, rng_seed=self.rng_seed, perplexity=2)
         x, y = data_tsne[0], data_tsne[1]
         filepath_tsne = os.path.join(
             destdir_curves,
@@ -365,11 +366,11 @@ class Model(GA_Model):
         self.population = []
         return winner_arr
 
-    def mate(self, parents):
+    def mate(self, parents, num_children):
         """
         Swaps the qubits of ansatz.
 
-        TODO: Implement gate mating.
+        TODO: Change so that mating happens at Individual level by passing in the set of qubits that we want to swap to a function in the Individual class.
         """
         children_arr = []
         swap_ixs = []
@@ -394,8 +395,6 @@ class Model(GA_Model):
                 "child_B": copy.deepcopy(parents[swap_ix[1]])
             }
 
-            print(f"Pre-mateswap ansatz: {children}")
-
             moment_A = self.rng.integers(children["child_A"].n_moments) 
             moment_B = self.rng.integers(children["child_B"].n_moments)
             qubit_A = qubit_B = self.rng.integers(self.n_qubits).item()
@@ -404,7 +403,7 @@ class Model(GA_Model):
             def check_gate(qubit_str, qubit_num):
                 if qubit_str.find("_") > 0:
                     return int(qubit_str[-1])
-                return -1
+                return qubit_num
 
             while True:
                 A_link = check_gate(
@@ -419,10 +418,10 @@ class Model(GA_Model):
                 if (A_link == qubit_A and B_link == qubit_B) or (A_link in swap_set and B_link in swap_set):
                     break
                 else:
-                    if A_link >= 0:
+                    if A_link != qubit_A:
                         swap_set.add(A_link)
                         qubit_B = A_link
-                    if B_link >= 0:
+                    if B_link != qubit_B:
                         swap_set.add(B_link)
                         qubit_A = B_link
 
@@ -430,14 +429,13 @@ class Model(GA_Model):
                 children["child_A"][moment_A, qubit] = parents[swap_ix[1]][moment_B, qubit]
                 children["child_B"][moment_B, qubit] = parents[swap_ix[0]][moment_A, qubit]
 
-            print(f"Post-mateswap ansatz: {children}")
-
-            children_arr.extend(children)
+            children_arr.extend(children.values())
 
         for child in children_arr:
+            child.update()
             self.mutate(child)
 
-        return children_arr
+        return children_arr[:num_children]
 
     def deep_permutation(self, arr):
         arr_copy = [i for i in arr]
@@ -476,7 +474,7 @@ class Model(GA_Model):
                 qubit = self.rng.integers(self.n_qubits)
                 ansatz.mutate(moment, qubit)
 
-            ansatz_vector = tuple(create_vector(ansatz, return_type='list'))
+            ansatz_vector = tuple(create_vector(ansatz, self.max_moments, return_type='list'))
             if ansatz_vector in self.set_of_all_circuits:
                 ansatz = copy.deepcopy(ansatz_backup)
                 count += 1
@@ -490,21 +488,39 @@ class Model(GA_Model):
         immigrant_arr = []
         for _ in range(n_individuals):
             ansatz_vectors_arr = []
+            ansatz_arr = []
             distances_arr = []
             for __ in range(100):
-                while True:
-                    ansatz_vector = tuple(create_vector(ansatz, return_type='list'))
-                    if ansatz_vector in self.set_of_all_circuits:
-                        ansatz = Individual(
+                ansatz = Individual(
                             self.n_qubits,
-                            # self.rng.integers(1, self.max_moments + 1),
                             self.max_moments,
                             self.genepool,
                             self.rng_seed,
                         )
+                count = 0
+                while True:
+                    if count == 5:
+                        self.max_moments += 1
+                        count = 0
+                        ansatz = Individual(
+                            self.n_qubits,
+                            self.max_moments,
+                            self.genepool,
+                            self.rng_seed,
+                        )
+                    ansatz_vector = tuple(create_vector(ansatz, self.max_moments, return_type='list'))
+                    if ansatz_vector in self.set_of_all_circuits:
+                        ansatz = Individual(
+                            self.n_qubits,
+                            self.max_moments,
+                            self.genepool,
+                            self.rng_seed,
+                        )
+                        count += 1
                         continue
 
                     ansatz_vectors_arr.append(ansatz_vector)
+                    ansatz_arr.append(ansatz)
                     break
             for j in range(100):
                 distances_arr.append(
@@ -512,11 +528,12 @@ class Model(GA_Model):
                         euclidean_distances(
                             ansatz_vectors_arr[j], 
                             self.set_of_all_circuits, 
-                            max_moments=self.max_moments
+                            max_moments=self.max_moments,
+                            PRE_COMPUTED_VECTORS=True
                         )
                     )
                 )
-            ansatz = ansatz_vectors_arr[np.argmax(np.mean(distances_arr, axis=0))]
+            ansatz = ansatz_arr[np.argmax(np.mean(distances_arr, axis=0))]
             immigrant_arr.append(
                 ansatz
             )

@@ -3,11 +3,17 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
 
-def euclidean_distances(ansatz_comp, population, max_moments=None):
-    vector_comp = create_vector(ansatz_comp, max_moments=max_moments)
+def euclidean_distances(ansatz_comp, population, max_moments, PRE_COMPUTED_VECTORS=False):
+    if not PRE_COMPUTED_VECTORS:
+        vector_comp = create_vector(ansatz_comp, max_moments)
+    else:
+        vector_comp = np.array(ansatz_comp)
     distances = []
     for ansatz in population:
-        vector = create_vector(ansatz, max_moments=max_moments)
+        if not PRE_COMPUTED_VECTORS:
+            vector = create_vector(ansatz, max_moments)
+        else:
+            vector = np.array(ansatz)
         distances.append(
             np.sum(
                 np.power(
@@ -16,15 +22,22 @@ def euclidean_distances(ansatz_comp, population, max_moments=None):
                 )
             )**0.5
         )
-        ansatz.update_ansatz_dicts()
     
     return distances
 
-def tsne(population, perplexity=2, rng_seed=None):
+def tsne(population, max_moments, perplexity=2, rng_seed=None, PRE_COMPUTED_VECTORS=False):
+    """
+    TODO: add in max_moments  to func
+    """
     vectors = []
-    for ansatz in population:
-        vectors.append(create_vector(ansatz))
-    vectors = np.array(vectors)
+    if not PRE_COMPUTED_VECTORS:
+        for ansatz in population:
+            vectors.append(create_vector(ansatz, max_moments))
+        vectors = np.array(vectors)
+    else:
+        for ansatz in population:
+            vectors.append(np.array(ansatz))
+        vectors = np.array(population)
     
     if vectors.shape[1] > 100:
         pca = PCA()
@@ -42,12 +55,10 @@ def tsne(population, perplexity=2, rng_seed=None):
 
     return S_t_sne.T
 
-def create_vector(ansatz, max_moments=None, return_type='numpy'):
+def create_vector(ansatz, max_moments, return_type='numpy'):
     """
     TODO: Change pad from affecting circuit to happeneing automatically here
     """
-    # if max_moments is not None and ansatz.n_moments != max_moments:
-    #     ansatz.add_moment('pad_NO_UPDATE', num_pad=(max_moments - ansatz.n_moments))
 
     vector = []
 
@@ -61,9 +72,7 @@ def create_vector(ansatz, max_moments=None, return_type='numpy'):
                 )
             ):
                 one_qubit_states.extend([0])
-            # if moment >= ansatz.max_moments:
-            #     vector.extend([i for i in one_qubit_states])
-            #     continue
+
             if moment >= ansatz.n_moments or ansatz.genepool.n_qubits(ansatz[moment][qubit]) != 1:
                 vector.extend([i for i in one_qubit_states])
                 continue

@@ -51,19 +51,41 @@ class Individual(GA_Individual):
     def __setitem__(self, key, value):
         """
         Allows editing of the ansatz via the [] operators.
+        
+        TODO: figure out how to allow automatic updates
         """
         if type(key) is tuple:
             self.ansatz_dicts[int(key[0])][int(key[1])] = value
         else:
             self.ansatz_dicts[int(key)] = value
-        self.convert_to_qml()
-        self.draw_ansatz()
 
     def __str__(self):
         return str(self.ansatz_dicts)
 
     def __repr__(self):
         return self.__str__()
+    
+    def update(self):
+        self.convert_to_qml()
+
+        # print('\n\npre-compile')
+        # print(self.ansatz_dicts)
+        # print('\n')
+        # print(self.ansatz_qml)
+        # print('\n')
+        # print(self.ansatz_draw)
+
+        self.draw_ansatz()
+
+        # print('\n\npost-compile')
+        # print(self.ansatz_dicts)
+        # print('\n')
+        # print(self.ansatz_qml)
+        # print('\n')
+        # print(self.ansatz_draw)
+
+        self.compile_ansatz()
+        self.convert_to_qml()
 
     def generate(self):
         """
@@ -99,13 +121,11 @@ class Individual(GA_Individual):
                 else:
                     raise Exception("Gates with more than 2 qubits haven't been implemented yet.")
                 
-        self.convert_to_qml()
-        self.draw_ansatz()
+        self.update()
 
     def generate_from(self, ansatz):
         self.ansatz_dicts = copy.deepcopy(ansatz)
-        self.convert_to_qml()
-        self.draw_ansatz()
+        self.update()
 
     def convert_to_qml(self):
         """
@@ -188,10 +208,8 @@ class Individual(GA_Individual):
             expansion_strategy="device",
             show_all_wires=True,
         )(self.params, event=[i for i in range(1, self.n_qubits+1)])[:-3]
-        
-        self.update_ansatz_dicts()
 
-    def update_ansatz_dicts(self):
+    def compile_ansatz(self):
         """
         Update the ansatz from the drawn ansatz after compiling the circuit. 
 
@@ -213,29 +231,26 @@ class Individual(GA_Individual):
             return other_qubit
         
         def moment_array(qubit_array):
-            qubit_moments = dict.fromkeys(range(self.n_qubits), [])
+            qubit_moments = dict.fromkeys(range(self.n_qubits), -1)
             moment = 0
-            moment_flag = False
-            for string_ix in range(len(qubit_array[0])):
+            gate_flag = False
+            for string_ix in range(3, len(qubit_array[0])):     # 3 b/c indeces 0-2 are where pennylane print qubit number like '0: ' and then at index 3 the circuit drawing begins
                 dash_count = 0
-                non_dash_qubits = []
                 for q_ix in range(len(qubit_array)):
-                    # print(q_ix)
-                    # print(qubit_array)
                     if qubit_array[q_ix][string_ix] == '─' or qubit_array[q_ix][string_ix] == '┤':
                         dash_count += 1
                     else:
-                        non_dash_qubits.append(q_ix)
-                if dash_count == len(qubit_array):
-                    moment_flag = False
-                    continue
-                elif moment_flag:
-                    continue
-                else:
-                    for q_ix in non_dash_qubits:
+                        if isinstance(qubit_moments[q_ix], int):
+                            qubit_moments[q_ix] = []
+                        elif moment in qubit_moments[q_ix]:
+                            continue
                         qubit_moments[q_ix].append(moment)
-                    moment += 1
-                    moment_flag = True
+                if dash_count == len(qubit_array):
+                    if gate_flag:
+                        moment += 1
+                    gate_flag = False
+                else:
+                    gate_flag = True
 
             return qubit_moments, moment
 
@@ -245,10 +260,12 @@ class Individual(GA_Individual):
         qubit_ix = 0
         for qubit in qubit_array:
             gate_ix = 0
-            for str_ix in range(len(qubit)):
+            dash_flag = False
+            for str_ix in range(3, len(qubit)):
                 # THIS LOGIC SPECIFIC TO ONE GENEPOOL (RX, RY, RZ, Rϕ, CNOT)
                 #  -> change to just search over self.genepool.gates array for matching sequence
                 if qubit[str_ix] == '─':
+                    dash_flag = True
                     continue
 
                 if qubit[str_ix] == 'R':
@@ -258,8 +275,6 @@ class Individual(GA_Individual):
                         self.ansatz_dicts[moment][qubit_ix] = 'PhaseShift' # Is there a way to get qml.draw() to use the actual gate names?
                     else:
                         self.ansatz_dicts[moment][qubit_ix] = 'R' + qubit[str_ix+1]
-                    gate_ix += 1
-                    continue
                 elif qubit[str_ix] == '╭':
                     moment = qubit_moments[qubit_ix][gate_ix]
 
@@ -270,18 +285,19 @@ class Individual(GA_Individual):
                     else:       # qubit[j+1] == '●'
                         self.ansatz_dicts[moment][qubit_ix] = 'CNOT_C-' + str(other_qubit_ix)
                         self.ansatz_dicts[moment][other_qubit_ix] = 'CNOT_T-' + str(qubit_ix)
-                    gate_ix += 1
+                elif not dash_flag:
                     continue
+
+                gate_ix += 1
+                dash_flag = False
             
             qubit_ix += 1
-
+            
         for moment_dict in self.ansatz_dicts:
             for k, v in moment_dict.items():
                 if v == 0:
                     moment_dict[k] = 'I'
-
         self.n_moments = len(self.ansatz_dicts)
-        self.convert_to_qml()
 
     def add_moment(self, method='random', **kwargs):
         """
@@ -298,20 +314,10 @@ class Individual(GA_Individual):
             for _ in range(kwargs['num_pad']):
                 self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
                 self.n_moments += 1
-        elif method == 'pad_NO_UPDATE':
-            for _ in range(kwargs['num_pad']):
-                self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
-                self.n_moments += 1
         else:
             raise Exception("Method not supported.")
         
-        if method != 'pad_NO_UPDATE':
-            self.convert_to_qml()
-            self.draw_ansatz()
-
-    # def update(self):
-    #     self.convert_to_qml()
-    #     self.draw_ansatz()
+        self.update()
 
     def mutate(self, moment, qubit):
         """
@@ -357,5 +363,4 @@ class Individual(GA_Individual):
                 self.ansatz_dicts[moment][qubit_pair] = gate.name + direction[1] + f"-{qubit}"
                 break
 
-        self.convert_to_qml()
-        self.draw_ansatz()
+        self.update()
