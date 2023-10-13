@@ -183,8 +183,8 @@ class Model(GA_Model):
             post_process_end_time = time.time()
             self.total_ga_time += (post_process_end_time - post_process_start_time)
             running_total_time = self.total_ga_time + self.total_vqc_time
-            print(f'GA (classical) computations have taken {self.total_ga_time} seconds \n     and {100 * self.total_ga_time / running_total_time:0.2f}% of the total time so far.')
-            print(f'VQC (quantum) computations have taken {self.total_vqc_time} seconds \n     and {100 * self.total_vqc_time / running_total_time:0.2f}% of the total time so far.')
+            print(f'GA (classical) computations have taken {self.total_ga_time:0.2f} seconds \n     and {100 * self.total_ga_time / running_total_time:0.2f}% of the total time so far.')
+            print(f'VQC (quantum) computations have taken {self.total_vqc_time:0.2f} seconds \n     and {100 * self.total_vqc_time / running_total_time:0.2f}% of the total time so far.')
 
         print(
             "filepath is: ",
@@ -222,12 +222,12 @@ class Model(GA_Model):
         self.retrain_time = retrain_end_time - retrain_start_time
 
         TOTAL_TIME = self.total_ga_time + self.total_vqc_time + self.retrain_time
-        print(f'Final GA (classical) time: {self.total_ga_time} seconds')
-        print(f'GA fraction of total time: {self.total_ga_time / TOTAL_TIME} %')
-        print(f'Final VQC (quantum) time: {self.total_vqc_time} seconds')
-        print(f'VQC fraction of total time: {self.total_vqc_time / TOTAL_TIME} %')
-        print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time} seconds')
-        print(f'Retrain fraction of total time: {self.retrain_time / TOTAL_TIME} %')
+        print(f'Final GA (classical) time: {self.total_ga_time:0.2f} seconds')
+        print(f'GA fraction of total time: {100 * self.total_ga_time / TOTAL_TIME:0.2f} %')
+        print(f'Final VQC (quantum) time: {self.total_vqc_time:0.2f} seconds')
+        print(f'VQC fraction of total time: {100 * self.total_vqc_time / TOTAL_TIME:0.2f} %')
+        print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time:0.2f} seconds')
+        print(f'Retrain fraction of total time: {100 * self.retrain_time / TOTAL_TIME:0.2f} %')
 
     def evaluate_fitness(self, gen):
         """
