@@ -182,6 +182,9 @@ class Model(GA_Model):
 
             post_process_end_time = time.time()
             self.total_ga_time += (post_process_end_time - post_process_start_time)
+            running_total_time = self.total_ga_time + self.total_vqc_time
+            print(f'GA (classical) computations have taken {self.total_ga_time} seconds \n     and {100 * self.total_ga_time / running_total_time:0.2f}% of the total time so far.')
+            print(f'VQC (quantum) computations have taken {self.total_vqc_time} seconds \n     and {100 * self.total_vqc_time / running_total_time:0.2f}% of the total time so far.')
 
         print(
             "filepath is: ",
@@ -200,6 +203,7 @@ class Model(GA_Model):
         vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
         vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
         vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
+        vqc_config_ansatz["ansatz_draw"] = ansatz.ansatz_draw
         vqc_config_ansatz["params"] = ansatz.params
         vqc_config_ansatz["gen"] = gen
         fitness_arr = []
@@ -240,8 +244,8 @@ class Model(GA_Model):
 
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
             vqc_config_ansatz["ansatz_dicts"] = ansatz.ansatz_dicts
-            vqc_config_ansatz["ansatz_draw"] = ansatz.ansatz_draw
             vqc_config_ansatz["ansatz_qml"] = ansatz.ansatz_qml
+            vqc_config_ansatz["ansatz_draw"] = ansatz.ansatz_draw
             vqc_config_ansatz["params"] = ansatz.params
             vqc_config_ansatz["ix"] = ix
             vqc_config_ansatz["gen"] = gen
@@ -524,7 +528,7 @@ class Model(GA_Model):
                     break
             for j in range(100):
                 distances_arr.append(
-                    np.array(
+                    np.mean(
                         euclidean_distances(
                             ansatz_vectors_arr[j], 
                             self.set_of_all_circuits, 
@@ -533,7 +537,7 @@ class Model(GA_Model):
                         )
                     )
                 )
-            ansatz = ansatz_arr[np.argmax(np.mean(distances_arr, axis=0))]
+            ansatz = ansatz_arr[np.argmax(distances_arr)]
             immigrant_arr.append(
                 ansatz
             )
