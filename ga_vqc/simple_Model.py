@@ -80,7 +80,7 @@ class Model(GA_Model):
 
         self.generate_initial_pop()
 
-    def generate_ansatz(self, UPDATE_SET=True):
+    def generate_ansatz(self):
         ansatz = Individual(
                     self.n_qubits,
                     self.max_generate_moments,
@@ -88,7 +88,7 @@ class Model(GA_Model):
                     self.genepool,
                     self.rng_seed,
                 )
-        if UPDATE_SET == True and ansatz.n_moments > self.max_vector_moments:
+        if ansatz.n_moments > self.max_vector_moments:
             self.update_circuit_set(2 * ansatz.n_moments)
         return ansatz
     
@@ -109,7 +109,7 @@ class Model(GA_Model):
         init_pop = []
         for _ in range(self.init_pop_size):
             init_pop.append(
-                self.generate_ansatz(UPDATE_SET=False)
+                self.generate_ansatz()
             )
 
         ## Euclidean Distance on Vectorized Circuits ##
