@@ -34,7 +34,7 @@ class Model(GA_Model):
 
         self.n_qubits = config.n_qubits
         self.max_generate_moments = config.max_moments
-        self.max_vector_moments = 2 * config.max_moments
+        self.max_vector_moments = config.n_qubits * config.max_moments
         self.add_moment_prob = config.add_moment_prob
         self.genepool = config.genepool
         self.pop_size = config.pop_size
@@ -55,6 +55,7 @@ class Model(GA_Model):
         }
 
         self.population = []
+        self.temp_pop = []
         self.fitness_arr = []
         self.metrics_arr = []
 
@@ -96,9 +97,12 @@ class Model(GA_Model):
     def update_circuit_set(self, max_vector_moments):
         self.max_vector_moments = max_vector_moments
         self.set_of_all_circuits = copy.deepcopy(self.set_of_preran_circuits)
-        for ansatz in self.full_population:
+        for ansatz in self.full_population+self.temp_pop:
             ansatz.vectorize(max_vector_moments)
             self.set_of_all_circuits.add(tuple(ansatz.vector))
+
+    def clean(self):
+        self.temp_pop = []
 
     def generate_initial_pop(self):
         """
@@ -107,9 +111,8 @@ class Model(GA_Model):
         TODO: Change to a custom distance calculation that can be stored in each ansatz?
         """
         start_time = time.time()
-        init_pop = []
         for _ in range(self.init_pop_size):
-            init_pop.append(
+            self.temp_pop.append(
                 self.generate_ansatz()
             )
 
@@ -118,29 +121,30 @@ class Model(GA_Model):
         for i in range(self.pop_size):
             if i == 0:
                 random_ix = self.rng.integers(0, self.init_pop_size)
-                self.population.append(init_pop[random_ix])
+                self.population.append(self.temp_pop[random_ix])
                 continue
 
-            distances_arr = []
+            distance_arr = []
             for j in range(len(self.population)):
-                distances_arr.append(
-                    np.array(
+                distance_arr.append(
+                    np.mean(
                         euclidean_distances(
                             self.population[j], 
-                            init_pop,
+                            self.temp_pop,
                         )
                     )
                 )
 
-            sorted_ixs = np.argsort(np.mean(distances_arr, axis=0))
+            sorted_ixs = np.argsort(distance_arr)
             selected_ix = sorted_ixs[-1]
             k = 1
             while selected_ix in selected_ixs:
                 k += 1
                 selected_ix = sorted_ixs[-k]
             selected_ixs.add(selected_ix)
-            self.population.append(init_pop[selected_ix])
+            self.population.append(self.temp_pop[selected_ix])
         
+        self.clean()
         end_time = time.time()
         exec_time = end_time - start_time
         self.total_ga_time += exec_time
@@ -251,7 +255,8 @@ class Model(GA_Model):
         ix = 0
         args_arr = []
         for ansatz in self.population:
-            self.full_population.append(copy.deepcopy(ansatz))
+            # self.full_population.append(copy.deepcopy(ansatz))
+            self.full_population.append(ansatz)
             self.set_of_all_circuits.add(tuple(ansatz.vector))
 
             vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
@@ -280,10 +285,10 @@ class Model(GA_Model):
         # Both the fitness metrics and eval_metrics must be JSON serializable 
         #   -> (ie. default python classes or have custom serialization)
         self.fitness_arr = [output["fitness_metric"] for output in output_arr]
-        self.full_fitness_arr.extend(copy.deepcopy(self.fitness_arr))
+        self.full_fitness_arr.extend(self.fitness_arr)
         if self.n_eval_metrics > 0:
             self.metrics_arr = [output["eval_metrics"] for output in output_arr]
-            self.full_metrics_arr.extend(copy.deepcopy(self.metrics_arr))
+            self.full_metrics_arr.extend(self.metrics_arr)
 
         end_time = time.time()
         exec_time = end_time - start_time
@@ -316,8 +321,10 @@ class Model(GA_Model):
         destdir_curves = os.path.join(self.ga_output_path, "ga_curves", "run-%s" % self.start_time)
         if not os.path.exists(destdir_curves):
             os.makedirs(destdir_curves)
+        data_tsne_arr = []
         for perp in range(2, len(self.full_population)):
-            data_tsne = tsne(self.population, self.max_moments, rng_seed=self.rng_seed, perplexity=perp)
+            data_tsne = tsne(self.population, rng_seed=self.rng_seed, perplexity=perp)
+            data_tsne_arr.append(data_tsne)
             x, y = data_tsne[:, 0].T, data_tsne[:, 1].T
             filepath_tsne = os.path.join(
                 destdir_curves,
@@ -337,7 +344,9 @@ class Model(GA_Model):
 
         results = {
             "full_population_vectors": [ansatz.vector for ansatz in self.full_population],
+            "final_max_vector_moments": self.max_vector_moments,
             "full_population_fitness": self.full_fitness_arr,
+            "full_tsne_data": data_tsne_arr,
             "full_generation": [i.ansatz_dicts for i in self.population],
             "full_drawn_generation": [i.ansatz_draw for i in self.population],
             "full_fitness_generation": [i for i in self.fitness_arr],
@@ -403,6 +412,8 @@ class Model(GA_Model):
         for swap_ix in swap_ixs:  # NOT setup for odd number of parents
             child_A = copy.deepcopy(parents[swap_ix["parent_A"]])
             child_B = copy.deepcopy(parents[swap_ix["parent_B"]])
+            self.temp_pop.append(child_A)
+            self.temp_pop.append(child_B)
 
             moment_A = self.rng.integers(child_A.n_moments) 
             moment_B = self.rng.integers(child_B.n_moments)
@@ -442,6 +453,7 @@ class Model(GA_Model):
 
         for child in children_arr:
             self.mutate(child)
+        self.clean()
 
         return children_arr[:num_children]
 
@@ -501,6 +513,7 @@ class Model(GA_Model):
                         self.max_generate_moments += 1
                         ansatz = self.generate_ansatz()
                         count = 0
+                    self.temp_pop.append(ansatz)
                     if tuple(ansatz.vector) in self.set_of_all_circuits:
                         ansatz = self.generate_ansatz()
                         count += 1
@@ -521,6 +534,7 @@ class Model(GA_Model):
             immigrant_arr.append(
                 ansatz
             )
+            self.clean()
 
         return immigrant_arr
             
