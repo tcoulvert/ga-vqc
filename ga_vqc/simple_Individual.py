@@ -13,7 +13,7 @@ class Individual(GA_Individual):
     Data structure for the ansatz.
     """
 
-    def __init__(self, n_qubits, n_moments, genepool, rng_seed, ansatz_dicts=None):
+    def __init__(self, n_qubits, n_moments, n_vector_moments, genepool, rng_seed, ansatz_dicts=None):
         """
         Initializes the inidivual object, all individuals (ansatz) are members of this class.
             - n_qubits: Number of qubits in the ansatz.
@@ -25,13 +25,15 @@ class Individual(GA_Individual):
         """
         self.n_qubits = n_qubits
         self.n_moments = n_moments
+        self.n_vector_moments = n_vector_moments
         self.genepool = genepool
         self.rng = np.random.default_rng(seed=rng_seed)
         self.pennylane_rng = pnp.random.default_rng(seed=rng_seed)
 
-        self.ansatz_dicts = []
-        self.ansatz_qml = []
-        self.ansatz_draw = []
+        self.ansatz_dicts = []          # Used to perform GA optimization on
+        self.ansatz_qml = []            # Used to run the actual VQC (list of strings of python code to run VQC on pennylane)
+        self.ansatz_draw = []           # Used to visualize the VQC and compile the circuit through the draw function
+        self.vector = []                # Used to keep track of which circuits have been run and distance between circuits
         self.params = []
 
         if ansatz_dicts is None:
@@ -58,6 +60,7 @@ class Individual(GA_Individual):
             self.ansatz_dicts[int(key[0])][int(key[1])] = value
         else:
             self.ansatz_dicts[int(key)] = value
+        self.update()
 
     def __str__(self):
         return str(self.ansatz_dicts)
@@ -86,6 +89,12 @@ class Individual(GA_Individual):
 
         self.compile_ansatz()
         self.convert_to_qml()
+        self.vectorize(self.n_vector_moments)
+
+    def overwrite(self, moment, swapset, new_moment_dict):
+        for qubit in swapset:
+            self.ansatz_dicts[moment][qubit] = new_moment_dict[qubit]
+        self.update()
 
     def generate(self):
         """
@@ -123,8 +132,8 @@ class Individual(GA_Individual):
                 
         self.update()
 
-    def generate_from(self, ansatz):
-        self.ansatz_dicts = copy.deepcopy(ansatz)
+    def generate_from(self, ansatz_dicts):
+        self.ansatz_dicts = copy.deepcopy(ansatz_dicts)
         self.update()
 
     def convert_to_qml(self):
@@ -297,7 +306,10 @@ class Individual(GA_Individual):
             for k, v in moment_dict.items():
                 if v == 0:
                     moment_dict[k] = 'I'
+
         self.n_moments = len(self.ansatz_dicts)
+        if self.n_moments > self.n_vector_moments:
+            self.n_vector_moments = 2 * self.n_moments
 
     def add_moment(self, method='random', **kwargs):
         """
@@ -364,3 +376,56 @@ class Individual(GA_Individual):
                 break
 
         self.update()
+
+    def vectorize(self, max_moments):
+        """
+        TODO: Change pad from affecting circuit to happeneing automatically here
+        """
+        self.n_vector_moments = max_moments
+        vector = []
+
+        ### single-qubit gates ###
+        for moment in range(max_moments):
+            for qubit in range(self.n_qubits):
+                one_qubit_states = []
+                for _ in range(
+                    self.genepool.n_gates(
+                        search_param={'n_qubits': 1}
+                    )
+                ):
+                    one_qubit_states.extend([0])
+
+                if moment >= self.n_moments or self.genepool.n_qubits(self.ansatz_dicts[moment][qubit]) != 1:
+                    vector.extend([i for i in one_qubit_states])
+                    continue
+                one_qubit_states[self.genepool.index_of(self.ansatz_dicts[moment][qubit])] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
+                vector.extend([i for i in one_qubit_states])
+
+        ### 2-qubit gates ###
+        for moment in range(max_moments):
+            # [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1), ('I', 'I')]
+            two_qubit_states = []
+            for _ in range(
+                self.genepool.n_gates(
+                    search_param={'n_qubits': 2}
+                )
+            ):
+                two_qubit_states.extend([0 for __ in range(np.math.factorial(self.n_qubits) + 1)])
+                two_qubit_states[-1] = 1
+
+            for qubit in range(self.n_qubits):
+                if moment >= self.n_moments:
+                    break
+                if self.ansatz_dicts[moment][qubit].find('_') > 0: # Doesn't work for passing more than 1 2-qubit gate, and only works for 'control'/'target' gates
+                    two_qubit_states[-1] = 0
+                    if self.ansatz_dicts[moment][qubit][-3] == 'C':
+                        two_qubit_states[2*qubit] = 1
+                    elif self.ansatz_dicts[moment][qubit][-3] == 'T':
+                        two_qubit_states[2*qubit + 1] = 1
+                    break
+            vector.extend(two_qubit_states)
+
+        ### 3+ qubit gates ###
+        # TO DO
+
+        self.vector = vector

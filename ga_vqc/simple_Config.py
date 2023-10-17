@@ -55,6 +55,7 @@ class Config():
         self.n_winners = 2 # needs to be an even number
         self.n_mutations = 1
         self.n_steps_patience = 15
+        self.n_eval_metrics = 0
         
         self.rng_seed = rng_seed
         
