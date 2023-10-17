@@ -22,7 +22,7 @@ class Model(GA_Model):
     TODO: change the I assignment to a random assignment.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, set_of_preran_circuits=set()):
         """
         TODO: don't use 'self.' anymore for hyperparams, just pass around config so its clear 
             what state is set at runtime and doesnt change
@@ -58,7 +58,8 @@ class Model(GA_Model):
         self.fitness_arr = []
         self.metrics_arr = []
 
-        self.set_of_all_circuits = set()
+        self.set_of_preran_circuits = set_of_preran_circuits
+        self.set_of_all_circuits = copy.deepcopy(set_of_preran_circuits)
         self.full_population = []
         self.full_fitness_arr = []
         self.full_metrics_arr = []
@@ -94,7 +95,7 @@ class Model(GA_Model):
     
     def update_circuit_set(self, max_vector_moments):
         self.max_vector_moments = max_vector_moments
-        self.set_of_all_circuits = set()
+        self.set_of_all_circuits = copy.deepcopy(self.set_of_preran_circuits)
         for ansatz in self.full_population:
             ansatz.vectorize(max_vector_moments)
             self.set_of_all_circuits.add(tuple(ansatz.vector))
@@ -162,7 +163,7 @@ class Model(GA_Model):
             # GA Post-processing #
             post_process_start_time = time.time()
 
-            results = self.make_results()
+            results = self.make_results(gen)
             
             parents = self.select()
 
@@ -310,7 +311,30 @@ class Model(GA_Model):
                     self.metrics_arr[chosen_index]
                 )
 
-    def make_results(self):
+    def make_results(self, gen):
+        ### tSNE clustering ###
+        destdir_curves = os.path.join(self.ga_output_path, "ga_curves", "run-%s" % self.start_time)
+        if not os.path.exists(destdir_curves):
+            os.makedirs(destdir_curves)
+        for perp in range(2, len(self.full_population)):
+            data_tsne = tsne(self.population, self.max_moments, rng_seed=self.rng_seed, perplexity=perp)
+            x, y = data_tsne[:, 0].T, data_tsne[:, 1].T
+            filepath_tsne = os.path.join(
+                destdir_curves,
+                "%03dtsne%04d_distance_data.png"
+                % (gen, perp)
+            )
+            plt.figure(1)
+            plt.style.use("seaborn")
+            plt.scatter(x, y, marker=".", c=[m["auroc"] for m in self.full_metrics_arr], cmap=plt.set_cmap('plasma'))
+            plt.ylabel("a.u.")
+            plt.xlabel("a.u.")
+            cbar = plt.colorbar()
+            cbar.set_label("AUROC")
+            plt.title("tSNE of Full Population")
+            plt.savefig(filepath_tsne, format="png")
+            plt.close(1)
+
         results = {
             "full_population_vectors": [ansatz.vector for ansatz in self.full_population],
             "full_population_fitness": self.full_fitness_arr,
@@ -410,10 +434,6 @@ class Model(GA_Model):
                         swap_set.add(B_link)
                         qubit_A = B_link
 
-            # for qubit in swap_set:
-            #     child_A[moment_A, qubit] = parents[swap_ix["parent_B"]][moment_B, qubit]
-            #     child_B[moment_B, qubit] = parents[swap_ix["parent_A"]][moment_A, qubit]
-
             child_A.overwrite(moment_A, swap_set, parents[swap_ix["parent_B"]][moment_B])
             child_B.overwrite(moment_B, swap_set, parents[swap_ix["parent_A"]][moment_A])
             if child_A.n_vector_moments > self.max_vector_moments or child_B.n_vector_moments > self.max_vector_moments:
@@ -459,7 +479,7 @@ class Model(GA_Model):
 
             if ansatz.n_vector_moments > self.max_vector_moments:
                 self.update_circuit_set(ansatz.n_vector_moments)
-            if ansatz.vector in self.set_of_all_circuits:
+            if tuple(ansatz.vector) in self.set_of_all_circuits:
                 ansatz = copy.deepcopy(ansatz_backup)
                 count += 1
                 continue
@@ -481,7 +501,7 @@ class Model(GA_Model):
                         self.max_generate_moments += 1
                         ansatz = self.generate_ansatz()
                         count = 0
-                    if ansatz.vector in self.set_of_all_circuits:
+                    if tuple(ansatz.vector) in self.set_of_all_circuits:
                         ansatz = self.generate_ansatz()
                         count += 1
                         continue
@@ -492,7 +512,7 @@ class Model(GA_Model):
                 distances_arr.append(
                     np.mean(
                         euclidean_distances(
-                            ansatz_arr[j].vector, 
+                            ansatz_arr[j], 
                             self.full_population
                         )
                     )
