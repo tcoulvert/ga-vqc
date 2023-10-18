@@ -1,5 +1,3 @@
-import os
-
 class Config():
     def __init__(self, vqc_main, vqc_config, genepool, ga_output_path, rng_seed=None) -> None:
         """
@@ -56,6 +54,8 @@ class Config():
         self.n_mutations = 1
         self.n_steps_patience = 15
         self.n_eval_metrics = 0
+
+        self.set_of_preran_circuits = set()
         
         self.rng_seed = rng_seed
         

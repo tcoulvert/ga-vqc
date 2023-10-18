@@ -20,7 +20,7 @@ class Model(GA_Model):
     TODO: change the I assignment to a random assignment.
     """
 
-    def __init__(self, config, set_of_preran_circuits=set()):
+    def __init__(self, config):
         """
         TODO: don't use 'self.' anymore for hyperparams, just pass around config so its clear 
             what state is set at runtime and doesnt change
@@ -59,8 +59,8 @@ class Model(GA_Model):
 
         # Pre-ran circuits to keep across multiple runs 
         #   -> how to resize the vectors each time with the main set??
-        self.set_of_preran_circuits = set_of_preran_circuits
-        self.set_of_all_circuits = copy.deepcopy(set_of_preran_circuits)
+        self.set_of_preran_circuits = config.set_of_preran_circuits
+        self.set_of_all_circuits = copy.deepcopy(config.set_of_preran_circuits)
         self.full_population = []
         self.full_fitness_arr = []
         self.full_metrics_arr = []
