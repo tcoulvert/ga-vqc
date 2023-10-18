@@ -1,13 +1,11 @@
 import copy
 import datetime
-import difflib
 import multiprocessing as mp
 import os
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pennylane as qml
 
 from .Distance import euclidean_distances, tsne
 from .GA_ABC import GA_Model
@@ -182,7 +180,7 @@ class Model(GA_Model):
             print(
                 f"Best fitness: {self.best_perf['fitness']}, " + 
                 f"Best metrics: {self.best_perf['eval_metrics']}, \n" +
-                f"Best ansatz: {self.best_perf['ansatz_draw']}"
+                f"Best ansatz: \n{self.best_perf['ansatz_draw']}"
             )
 
             
@@ -323,8 +321,8 @@ class Model(GA_Model):
             os.makedirs(destdir_curves)
         data_tsne_arr = []
         for perp in range(2, len(self.full_population)):
-            data_tsne = tsne(self.population, rng_seed=self.rng_seed, perplexity=perp)
-            data_tsne_arr.append(data_tsne)
+            data_tsne = tsne(self.full_population, rng_seed=self.rng_seed, perplexity=perp)
+            data_tsne_arr.append(data_tsne.tolist())
             x, y = data_tsne[:, 0].T, data_tsne[:, 1].T
             filepath_tsne = os.path.join(
                 destdir_curves,
