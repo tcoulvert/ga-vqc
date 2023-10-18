@@ -57,6 +57,8 @@ class Model(GA_Model):
         self.fitness_arr = []
         self.metrics_arr = []
 
+        # Pre-ran circuits to keep across multiple runs 
+        #   -> how to resize the vectors each time with the main set??
         self.set_of_preran_circuits = set_of_preran_circuits
         self.set_of_all_circuits = copy.deepcopy(set_of_preran_circuits)
         self.full_population = []
