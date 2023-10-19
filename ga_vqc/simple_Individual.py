@@ -13,7 +13,7 @@ class Individual(GA_Individual):
     Data structure for the ansatz.
     """
 
-    def __init__(self, n_qubits, n_moments, n_vector_moments, genepool, rng_seed, ansatz_dicts=None):
+    def __init__(self, n_qubits, n_moments, n_vector_moments, genepool, rng_seed, dicts=None, diagram=None):
         """
         Initializes the inidivual object, all individuals (ansatz) are members of this class.
             - n_qubits: Number of qubits in the ansatz.
@@ -30,25 +30,27 @@ class Individual(GA_Individual):
         self.rng = np.random.default_rng(seed=rng_seed)
         self.pennylane_rng = pnp.random.default_rng(seed=rng_seed)
 
-        self.ansatz_dicts = []          # Used to perform GA optimization on
-        self.ansatz_qml = []            # Used to run the actual VQC (list of strings of python code to run VQC on pennylane)
-        self.ansatz_draw = []           # Used to visualize the VQC and compile the circuit through the draw function
-        self.vector = []                # Used to keep track of which circuits have been run and distance between circuits
+        self.dicts = []          # Used to perform GA optimization on
+        self.qml = []            # Used to run the actual VQC (list of strings of python code to run VQC on pennylane)
+        self.diagram = str()     # Used to visualize the VQC and compile the circuit through the draw function
+        self.vector = []         # Used to keep track of which circuits have been run and distance between circuits
         self.params = []
 
-        if ansatz_dicts is None:
-            self.generate()
-        else:
-            self.generate_from(ansatz_dicts)
+        if dicts is None and diagram is None:
+            self.generate_dicts()
+        elif dicts is not None:
+            self.generate_from_dicts(dicts)
+        elif diagram is not None:
+            self.generate_from_diagram(diagram)
 
     def __len__(self):
-        return len(self.ansatz_dicts[0])
+        return len(self.dicts[0])
 
     def __getitem__(self, key):
         if type(key) is tuple:
-            return self.ansatz_dicts[int(key[0])][int(key[1])]
+            return self.dicts[int(key[0])][int(key[1])]
         else:
-            return self.ansatz_dicts[int(key)]
+            return self.dicts[int(key)]
 
     def __setitem__(self, key, value):
         """
@@ -57,86 +59,75 @@ class Individual(GA_Individual):
         TODO: figure out how to allow automatic updates
         """
         if type(key) is tuple:
-            self.ansatz_dicts[int(key[0])][int(key[1])] = value
+            self.dicts[int(key[0])][int(key[1])] = value
         else:
-            self.ansatz_dicts[int(key)] = value
+            self.dicts[int(key)] = value
         self.update()
 
     def __str__(self):
-        return str(self.ansatz_dicts)
+        return self.diagram
 
     def __repr__(self):
         return self.__str__()
     
-    def update(self):
-        self.convert_to_qml()
-
-        # print('\n\npre-compile')
-        # print(self.ansatz_dicts)
-        # print('\n')
-        # print(self.ansatz_qml)
-        # print('\n')
-        # print(self.ansatz_draw)
-
-        self.draw_ansatz()
-
-        # print('\n\npost-compile')
-        # print(self.ansatz_dicts)
-        # print('\n')
-        # print(self.ansatz_qml)
-        # print('\n')
-        # print(self.ansatz_draw)
-
-        self.compile_ansatz()
-        self.convert_to_qml()
-        self.vectorize(self.n_vector_moments)
+    def update(self, FULL=True):
+        if FULL:
+            self.generate_qml()
+            self.draw()
+        self.compile()
+        self.generate_qml()
+        self.generate_vector(self.n_vector_moments)
 
     def overwrite(self, moment, swapset, new_moment_dict):
         for qubit in swapset:
-            self.ansatz_dicts[moment][qubit] = new_moment_dict[qubit]
+            self.dicts[moment][qubit] = new_moment_dict[qubit]
         self.update()
 
-    def generate(self):
+    def generate_dicts(self):
         """
         Generates the ansatz stochastically based on the other member variables.
         """
         for moment in range(self.n_moments):
-            self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
+            self.dicts.append(dict.fromkeys(range(self.n_qubits), 0))
             qubits = self.rng.permutation(self.n_qubits)  # which qubit to pick first
             for qubit in qubits:
-                if self.ansatz_dicts[moment][qubit] != 0:
+                if self.dicts[moment][qubit] != 0:
                     continue
                 gate = self.genepool.choice()
 
                 if gate.n_qubits == 1:
-                    self.ansatz_dicts[moment][qubit] = gate.name
+                    self.dicts[moment][qubit] = gate.name
                     continue
                 elif gate.n_qubits == 2:
                     qubit_pairs = self.rng.permutation(
                         self.n_qubits
                     )
                     for qubit_pair in qubit_pairs:
-                        if self.ansatz_dicts[moment][qubit_pair] != 0 or qubit_pair == qubit:
+                        if self.dicts[moment][qubit_pair] != 0 or qubit_pair == qubit:
                             continue
 
                         direction = self.rng.permutation(["_C", "_T"])
-                        self.ansatz_dicts[moment][qubit] = gate.name + direction[0] + f"-{qubit_pair}"
-                        self.ansatz_dicts[moment][qubit_pair] = gate.name + direction[1] + f"-{qubit}"
+                        self.dicts[moment][qubit] = gate.name + direction[0] + f"-{qubit_pair}"
+                        self.dicts[moment][qubit_pair] = gate.name + direction[1] + f"-{qubit}"
                         break
 
-                    if self.ansatz_dicts[moment][qubit] == 0:
+                    if self.dicts[moment][qubit] == 0:
                         gate = self.genepool.choice(n_qubits=1)
-                        self.ansatz_dicts[moment][qubit] = gate.name
+                        self.dicts[moment][qubit] = gate.name
                 else:
                     raise Exception("Gates with more than 2 qubits haven't been implemented yet.")
                 
         self.update()
 
-    def generate_from(self, ansatz_dicts):
-        self.ansatz_dicts = copy.deepcopy(ansatz_dicts)
+    def generate_from_dicts(self, dicts):
+        self.dicts = copy.deepcopy(dicts)
         self.update()
 
-    def convert_to_qml(self):
+    def generate_from_diagram(self, diagram):
+        self.diagram = copy.deepcopy(diagram)
+        self.update(FULL=False)
+
+    def generate_qml(self):
         """
         Converts the ansatz into a general format for the QML.
 
@@ -147,32 +138,32 @@ class Individual(GA_Individual):
                  'RZ': [],
                  'CNOT': []}
         """
-        self.ansatz_qml = []
+        self.qml = []
         self.params = []
-        for moment in range(len(self.ansatz_dicts)):
+        for moment in range(len(self.dicts)):
             moment_dict = {gate.name: list() for gate in self.genepool.gates}
             stored_i = []
             for qubit in range(self.n_qubits):
-                _ix = self.ansatz_dicts[moment][qubit].find("_")
+                _ix = self.dicts[moment][qubit].find("_")
                 if _ix < 0:
-                    moment_dict[self.ansatz_dicts[moment][qubit]].append(qubit)
+                    moment_dict[self.dicts[moment][qubit]].append(qubit)
                 else:
                     if qubit in stored_i:
                         continue
-                    _1ix = self.ansatz_dicts[moment][qubit][_ix + 1]
-                    q_p = int(self.ansatz_dicts[moment][qubit][-1])
+                    _1ix = self.dicts[moment][qubit][_ix + 1]
+                    q_p = int(self.dicts[moment][qubit][-1])
                     stored_i.append(q_p)
                     if _1ix == "C":
-                        moment_dict[self.ansatz_dicts[moment][qubit][:_ix]].append([qubit, int(q_p)])
+                        moment_dict[self.dicts[moment][qubit][:_ix]].append([qubit, int(q_p)])
                     else:
-                        moment_dict[self.ansatz_dicts[moment][qubit][:_ix]].append([int(q_p), qubit])
+                        moment_dict[self.dicts[moment][qubit][:_ix]].append([int(q_p), qubit])
             
             for gate_name in moment_dict.keys():
                 if len(moment_dict[gate_name]) == 0 or gate_name == "I":
                     continue
                 if self.genepool.n_qubits(gate_name) == 1: # Change to check n_params of gate
                     if self.genepool.n_params(gate_name) > 0:
-                        self.ansatz_qml.append(
+                        self.qml.append(
                             f"qml.broadcast(qml.{gate_name}, wires={moment_dict[gate_name]}, pattern='single', " +
                             f"parameters=params[{len(self.params)}:{len(self.params) + len(moment_dict[gate_name])}])"
                         )
@@ -180,12 +171,12 @@ class Individual(GA_Individual):
                             # self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name), requires_grad=True))
                             self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name)))
                     else:
-                        self.ansatz_qml.append(
+                        self.qml.append(
                             f"qml.broadcast(qml.{gate_name}, wires={moment_dict[gate_name]}, pattern='single')"
                         )
                 elif self.genepool.n_qubits(gate_name) == 2:
                     if self.genepool.n_params(gate_name) > 0:
-                        self.ansatz_qml.append(
+                        self.qml.append(
                             f"qml.broadcast(qml.{gate_name}, wires={np.array(moment_dict[gate_name]).flatten(order='C').tolist()}, " +
                             f"parameters=params[{len(self.params)}:{len(self.params) + len(moment_dict[gate_name])}])" +
                             f"pattern={moment_dict[gate_name]})"
@@ -194,23 +185,23 @@ class Individual(GA_Individual):
                             # self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name), requires_grad=True))
                             self.params.append(np.pi * self.pennylane_rng.random(size=self.genepool.n_params(gate_name)))
                     else:
-                        self.ansatz_qml.append(
+                        self.qml.append(
                             f"qml.broadcast(qml.{gate_name}, wires={np.array(moment_dict[gate_name]).flatten(order='C').tolist()}, " +
                             f"pattern={moment_dict[gate_name]})"
                         )
         self.params = pnp.array(self.params, dtype=object, requires_grad=True)
 
-    def ansatz_circuit(self, params, event=None):
-        for m in self.ansatz_qml:
+    def circuit(self, params, event=None):
+        for m in self.qml:
             exec(m)
         return qml.expval(qml.PauliZ(wires=[self.n_qubits - 1]))
 
-    def draw_ansatz(self):
+    def draw(self):
         qnode = qml.QNode(
-                qml.compile(basis_set=self.genepool.gate_list(), num_passes=3)(self.ansatz_circuit),
+                qml.compile(basis_set=self.genepool.gate_list(), num_passes=3)(self.circuit),
                 qml.device("default.qubit", wires=self.n_qubits, shots=1),
             )
-        self.ansatz_draw = qml.draw(
+        self.diagram = qml.draw(
             qnode,
             decimals=None,
             max_length=1e6,
@@ -218,17 +209,17 @@ class Individual(GA_Individual):
             show_all_wires=True,
         )(self.params, event=[i for i in range(1, self.n_qubits+1)])[:-3]
 
-    def compile_ansatz(self):
+    def compile(self):
         """
         Update the ansatz from the drawn ansatz after compiling the circuit. 
 
         TODO: Figure out how to make this general for any gate (or at 
                 minimum any gate the compiler spits out) -> edit specific logic to use genepool
         """
-        self.ansatz_dicts = []
+        self.dicts = []
 
-        ix_arr = [(None, 0)] + [(bar.start()+1, n.end()) for bar, n in zip(re.finditer('┤', self.ansatz_draw), re.finditer('\n', self.ansatz_draw))] + [(-1, None)]
-        qubit_array = [self.ansatz_draw[ix_arr[i][1] : ix_arr[i+1][0]] for i in range(len(ix_arr) - 1)]
+        ix_arr = [(None, 0)] + [(bar.start()+1, n.end()) for bar, n in zip(re.finditer('┤', self.diagram), re.finditer('\n', self.diagram))] + [(-2, None)]
+        qubit_array = [self.diagram[ix_arr[i][1] : ix_arr[i+1][0]] for i in range(len(ix_arr) - 1)]
 
         def find_other_qubit(qubit_array, qubit_ix, gate_ix):
             other_qubit = -1
@@ -265,7 +256,7 @@ class Individual(GA_Individual):
 
         qubit_moments, n_moments = moment_array(qubit_array)
         for _ in range(n_moments):
-            self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 0))
+            self.dicts.append(dict.fromkeys(range(self.n_qubits), 0))
         qubit_ix = 0
         for qubit in qubit_array:
             gate_ix = 0
@@ -281,19 +272,19 @@ class Individual(GA_Individual):
                     moment = qubit_moments[qubit_ix][gate_ix]
 
                     if qubit[str_ix+1] == 'ϕ':
-                        self.ansatz_dicts[moment][qubit_ix] = 'PhaseShift' # Is there a way to get qml.draw() to use the actual gate names?
+                        self.dicts[moment][qubit_ix] = 'PhaseShift' # Is there a way to get qml.draw() to use the actual gate names?
                     else:
-                        self.ansatz_dicts[moment][qubit_ix] = 'R' + qubit[str_ix+1]
+                        self.dicts[moment][qubit_ix] = 'R' + qubit[str_ix+1]
                 elif qubit[str_ix] == '╭':
                     moment = qubit_moments[qubit_ix][gate_ix]
 
                     other_qubit_ix = find_other_qubit(qubit_array, qubit_ix, str_ix)
                     if qubit[str_ix+1] == 'X':
-                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_T-' + str(other_qubit_ix)
-                        self.ansatz_dicts[moment][other_qubit_ix] = 'CNOT_C-' + str(qubit_ix)
+                        self.dicts[moment][qubit_ix] = 'CNOT_T-' + str(other_qubit_ix)
+                        self.dicts[moment][other_qubit_ix] = 'CNOT_C-' + str(qubit_ix)
                     else:       # qubit[j+1] == '●'
-                        self.ansatz_dicts[moment][qubit_ix] = 'CNOT_C-' + str(other_qubit_ix)
-                        self.ansatz_dicts[moment][other_qubit_ix] = 'CNOT_T-' + str(qubit_ix)
+                        self.dicts[moment][qubit_ix] = 'CNOT_C-' + str(other_qubit_ix)
+                        self.dicts[moment][other_qubit_ix] = 'CNOT_T-' + str(qubit_ix)
                 elif not dash_flag:
                     continue
 
@@ -302,12 +293,12 @@ class Individual(GA_Individual):
             
             qubit_ix += 1
             
-        for moment_dict in self.ansatz_dicts:
+        for moment_dict in self.dicts:
             for k, v in moment_dict.items():
                 if v == 0:
                     moment_dict[k] = 'I'
 
-        self.n_moments = len(self.ansatz_dicts)
+        self.n_moments = len(self.dicts)
         if self.n_moments > self.n_vector_moments:
             self.n_vector_moments = 2 * self.n_moments
 
@@ -320,11 +311,11 @@ class Individual(GA_Individual):
         if method == 'random':
             raise Exception("Method not yet supported.")
         elif method == 'duplicate':
-            self.ansatz_dicts.append(copy.deepcopy(self.ansatz_dicts[moment]))
+            self.dicts.append(copy.deepcopy(self.dicts[moment]))
             self.n_moments += 1
         elif method == 'pad':
             for _ in range(kwargs['num_pad']):
-                self.ansatz_dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
+                self.dicts.append(dict.fromkeys(range(self.n_qubits), 'I'))
                 self.n_moments += 1
         else:
             raise Exception("Method not supported.")
@@ -343,41 +334,41 @@ class Individual(GA_Individual):
         double_swap_flag = 0
         gate = self.genepool.choice()
 
-        if self.ansatz_dicts[moment][qubit].find("_") > 0:
+        if self.dicts[moment][qubit].find("_") > 0:
             double_swap_flag += 1
             gate_pair = self.genepool.choice(n_qubits=1)
-            self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit][-1])] = gate_pair.name
+            self.dicts[moment][int(self.dicts[moment][qubit][-1])] = gate_pair.name
 
         if gate.n_qubits == 1:
-            self.ansatz_dicts[moment][qubit] = gate.name
+            self.dicts[moment][qubit] = gate.name
         else:
             qubit_pairs = self.rng.permutation(self.n_qubits)
             for qubit_pair in qubit_pairs:
                 if qubit_pair == qubit:
                     continue
-                if self.ansatz_dicts[moment][qubit_pair].find("_") > 0:
+                if self.dicts[moment][qubit_pair].find("_") > 0:
                     double_swap_flag += 1
                     gate_pair = self.genepool.choice()
                     if double_swap_flag == 2 and gate_pair.n_qubits == 2:
                         direction = self.rng.permutation(["_C", "_T"])
-                        self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit][-1])] = (
-                            gate_pair.name + direction[0] + f"-{int(self.ansatz_dicts[moment][qubit_pair][-1])}"
+                        self.dicts[moment][int(self.dicts[moment][qubit][-1])] = (
+                            gate_pair.name + direction[0] + f"-{int(self.dicts[moment][qubit_pair][-1])}"
                         )
-                        self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit_pair][-1])] = (
-                            gate_pair.name + direction[1] + f"-{int(self.ansatz_dicts[moment][qubit][-1])}"
+                        self.dicts[moment][int(self.dicts[moment][qubit_pair][-1])] = (
+                            gate_pair.name + direction[1] + f"-{int(self.dicts[moment][qubit][-1])}"
                         )
                     else:
                         gate_pair = self.genepool.choice(n_qubits=1)
-                        self.ansatz_dicts[moment][int(self.ansatz_dicts[moment][qubit_pair][-1])] = gate_pair.name
+                        self.dicts[moment][int(self.dicts[moment][qubit_pair][-1])] = gate_pair.name
 
                 direction = self.rng.permutation(["_C", "_T"])
-                self.ansatz_dicts[moment][qubit] = gate.name + direction[0] + f"-{qubit_pair}"
-                self.ansatz_dicts[moment][qubit_pair] = gate.name + direction[1] + f"-{qubit}"
+                self.dicts[moment][qubit] = gate.name + direction[0] + f"-{qubit_pair}"
+                self.dicts[moment][qubit_pair] = gate.name + direction[1] + f"-{qubit}"
                 break
 
         self.update()
 
-    def vectorize(self, max_moments):
+    def generate_vector(self, max_moments):
         """
         TODO: Change pad from affecting circuit to happeneing automatically here
         """
@@ -395,11 +386,13 @@ class Individual(GA_Individual):
                 ):
                     one_qubit_states.extend([0])
 
-                if moment >= self.n_moments or self.genepool.n_qubits(self.ansatz_dicts[moment][qubit]) != 1:
+                if moment >= self.n_moments or self.genepool.n_qubits(self.dicts[moment][qubit]) != 1:
                     vector.extend([i for i in one_qubit_states])
                     continue
-                one_qubit_states[self.genepool.index_of(self.ansatz_dicts[moment][qubit])] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
+                one_qubit_states[self.genepool.index_of(self.dicts[moment][qubit])] = 1 # Assumes 'I' always in index 0, and cannot NOT include 'I'
                 vector.extend([i for i in one_qubit_states])
+
+        vector.append(-1)
 
         ### 2-qubit gates ###
         for moment in range(max_moments):
@@ -416,11 +409,11 @@ class Individual(GA_Individual):
             for qubit in range(self.n_qubits):
                 if moment >= self.n_moments:
                     break
-                if self.ansatz_dicts[moment][qubit].find('_') > 0: # Doesn't work for passing more than 1 2-qubit gate, and only works for 'control'/'target' gates
+                if self.dicts[moment][qubit].find('_') > 0: # Doesn't work for passing more than 1 2-qubit gate, and only works for 'control'/'target' gates
                     two_qubit_states[-1] = 0
-                    if self.ansatz_dicts[moment][qubit][-3] == 'C':
+                    if self.dicts[moment][qubit][-3] == 'C':
                         two_qubit_states[2*qubit] = 1
-                    elif self.ansatz_dicts[moment][qubit][-3] == 'T':
+                    elif self.dicts[moment][qubit][-3] == 'T':
                         two_qubit_states[2*qubit + 1] = 1
                     break
             vector.extend(two_qubit_states)

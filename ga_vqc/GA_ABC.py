@@ -3,11 +3,23 @@ from abc import ABC, abstractmethod
 
 class GA_Individual(ABC):
     @abstractmethod
-    def generate(self):
+    def generate_dicts(self):
         pass
 
     @abstractmethod
-    def convert_to_qml(self):
+    def generate_qml(self):
+        pass
+
+    @abstractmethod
+    def compile(self):
+        pass
+
+    @abstractmethod
+    def generate_vector(self):
+        pass
+
+    @abstractmethod
+    def mutate(self):
         pass
 
 

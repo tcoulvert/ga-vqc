@@ -1,23 +1,56 @@
+from difflib import SequenceMatcher
+
 import numpy as np
 from sklearn.decomposition import TruncatedSVD
 from sklearn.manifold import TSNE
 
 
-def euclidean_distances(ansatz_comp, population):
-    vector_comp = np.array(ansatz_comp.vector)
-    distances = []
-    for ansatz in population:
-        vector = np.array(ansatz.vector)
-        distances.append(
+def euclidean_distances(ansatz_A, empty_circuit_ansatz, population):
+    vector_A = np.array(empty_circuit_ansatz.vector)
+    baseline_distances = []
+    for ansatz_B in population:
+        vector_B = np.array(ansatz_B.vector)
+        baseline_distances.append(
             np.sum(
                 np.power(
-                    vector_comp - vector,
+                    vector_A - vector_B,
                     2
                 )
             )**0.5
         )
     
-    return distances
+    vector_A = np.array(ansatz_A.vector)
+    distances = []
+    for ansatz_B in population:
+        vector_B = np.array(ansatz_B.vector)
+        distances.append(
+            np.sum(
+                np.power(
+                    vector_A - vector_B,
+                    2
+                )
+            )**0.5
+        )
+    
+    return np.array(distances) / np.array(baseline_distances)
+
+def string_disctances(ansatz_A, empty_circuit_diagram, population):
+    s = SequenceMatcher(isjunk=lambda x: x in ' ')
+
+    s.set_seq2(empty_circuit_diagram)
+    baseline_distances = []
+    for ansatz_B in population:
+        s.set_seq1(ansatz_B.diagram)
+        baseline_distances.append(s.ratio())
+
+    s.set_seq2(ansatz_A.diagram)
+    distances = []
+    for ansatz_B in population:
+        s.set_seq1(ansatz_B.diagram)
+        distances.append(s.ratio())
+
+    return np.array(distances) / np.array(baseline_distances)
+
 
 def tsne(population, perplexity=2, rng_seed=None):
     """

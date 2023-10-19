@@ -1,5 +1,6 @@
 class Config():
-    def __init__(self, vqc_main, vqc_config, genepool, ga_output_path, rng_seed=None) -> None:
+    def __init__(self, vqc_main, vqc_config, genepool, ga_output_path, 
+                 empty_circuit_data, dict_of_preran_circuits=None, rng_seed=None) -> None:
         """
             Defines the configuration parameters for the GA.
 
@@ -55,7 +56,26 @@ class Config():
         self.n_steps_patience = 15
         self.n_eval_metrics = 0
 
-        self.set_of_preran_circuits = set()
+        if dict_of_preran_circuits is None:
+            self.dict_of_preran_circuits = dict()
+        else:
+            self.dict_of_preran_circuits = dict_of_preran_circuits
+
+        self.empty_circuit_diagram = str()
+        for q in range(self.n_qubits):
+            if q != self.n_qubits - 1:
+                self.empty_circuit_diagram += f'{q}: {"─"*8*self.max_moments}┤ \n'
+                continue
+            self.empty_circuit_diagram += f'{q}: {"─"*8*self.max_moments}┤  '
+        self.dict_of_preran_circuits[
+            self.empty_circuit_diagram
+        ] = {
+                "fitness_metric": empty_circuit_data["fitness_metric"],
+                "eval_metrics": empty_circuit_data["eval_metrics"]
+            }
+        
+        self.init_distance_method = 'euclidean'
+        self.distance_method = 'string'
         
         self.rng_seed = rng_seed
         
