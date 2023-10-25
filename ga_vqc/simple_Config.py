@@ -43,6 +43,7 @@ class Config():
         self.n_qubits = 3
         self.n_init_moments = 2
         self.max_moments = 4 # >= 1
+        self.max_vector_moments = self.n_qubits * self.max_moments
         self.add_moment_prob = 0.0
 
         self.genepool = genepool

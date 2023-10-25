@@ -32,8 +32,10 @@ class Individual(GA_Individual):
 
         self.dicts = []          # Used to perform GA optimization on
         self.qml = []            # Used to run the actual VQC (list of strings of python code to run VQC on pennylane)
-        self.diagram = str()     # Used to visualize the VQC and compile the circuit through the draw function
-        self.vector = []         # Used to keep track of which circuits have been run and distance between circuits
+        self.diagram = str()     # Used to visualize the VQC 
+                                    # and compile the circuit through the draw function
+                                    # and (can be used to) track diversity through string distance
+        self.vector = []         # (Can be) used to keep track of which circuits have been run and distance between circuits
         self.params = []
 
         if dicts is None and diagram is None:

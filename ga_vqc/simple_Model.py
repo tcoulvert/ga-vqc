@@ -20,28 +20,30 @@ class Model(GA_Model):
     TODO: change the I assignment to a random assignment.
     """
 
-    def __init__(self, config):
+    def __init__(self, config,  OUTPUT=True):
         """
-        TODO: don't use 'self.' anymore for hyperparams, just pass around config so its clear 
-            what state is set at runtime and doesnt change
+        TODO: make a self.config and use that when using config hyperparams
         """
-        ### hyperparams for GA ###
-        self.backend_type = config.backend_type
-        self.vqc = config.vqc
-        self.max_concurrent = config.max_concurrent
+        self.OUTPUT = OUTPUT
+        self.config = config
 
-        self.n_qubits = config.n_qubits
-        self.max_generate_moments = config.max_moments
-        self.max_vector_moments = config.n_qubits * config.max_moments
-        self.add_moment_prob = config.add_moment_prob
-        self.genepool = config.genepool
-        self.pop_size = config.pop_size
-        self.init_pop_size = config.init_pop_size
-        self.n_new_individuals = config.n_new_individuals
-        self.n_winners = config.n_winners
-        self.n_mutations = config.n_mutations
-        self.n_steps_patience = config.n_steps_patience
-        self.n_eval_metrics = config.n_eval_metrics
+        ### hyperparams for GA ###
+        # self.backend_type = config.backend_type
+        # self.vqc = config.vqc
+        # self.max_concurrent = config.max_concurrent
+
+        # self.n_qubits = config.n_qubits
+        # self.max_generate_moments = config.max_moments
+        # self.max_vector_moments = config.n_qubits * config.max_moments
+        # self.add_moment_prob = config.add_moment_prob
+        # self.genepool = config.genepool
+        # self.pop_size = config.pop_size
+        # self.init_pop_size = config.init_pop_size
+        # self.n_new_individuals = config.n_new_individuals
+        # self.n_winners = config.n_winners
+        # self.n_mutations = config.n_mutations
+        # self.n_steps_patience = config.n_steps_patience
+        # self.n_eval_metrics = config.n_eval_metrics
         self.best_perf = {
             "fitness": 0,
             "eval_metrics": [],
@@ -57,12 +59,12 @@ class Model(GA_Model):
         self.fitness_arr = []
         self.metrics_arr = []
 
-        self.dict_of_preran_circuits = config.dict_of_preran_circuits
-        self.empty_circuit_diagram = config.empty_circuit_diagram
-        self.set_of_all_circuit_diagrams = set(self.dict_of_preran_circuits.keys())
+        # self.dict_of_preran_circuits = config.dict_of_preran_circuits
+        # self.empty_circuit_diagram = config.empty_circuit_diagram
+        self.set_of_all_circuit_diagrams = set(self.config.dict_of_preran_circuits.keys())
 
-        self.init_distance_method = config.init_distance_method
-        self.distance_method = config.distance_method
+        # self.init_distance_method = config.init_distance_method
+        # self.distance_method = config.distance_method
 
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         # Following time variables for debugging purposes only #
@@ -70,62 +72,64 @@ class Model(GA_Model):
         self.total_vqc_time = 0
         self.retrain_time = 0
 
-        self.ga_output_path = config.ga_output_path
-        self.rng_seed = config.rng_seed
-        self.rng = np.random.default_rng(seed=self.rng_seed)
+        # self.ga_output_path = config.ga_output_path
+        # self.rng_seed = config.rng_seed
+        self.rng = np.random.default_rng(seed=self.config.rng_seed)
 
         ### hyperparams for qae ###
         self.vqc_config = config.vqc_config
-        self.vqc_config["n_ansatz_qubits"] = self.n_qubits
+        self.vqc_config["n_ansatz_qubits"] = self.config.n_qubits
         self.vqc_config["start_time"] = self.start_time
 
         self.full_population = [self.generate_ansatz(diagram=ansatz) 
-                                for ansatz in self.dict_of_preran_circuits.keys()]
+                                for ansatz in self.config.dict_of_preran_circuits.keys()]
         self.set_of_all_circuit_vectors = set([tuple(ansatz.vector) 
                                                for ansatz in self.full_population])
         self.full_fitness_arr = [ansatz["fitness_metric"] 
-                                 for ansatz in self.dict_of_preran_circuits.values()]
+                                 for ansatz in self.config.dict_of_preran_circuits.values()]
         self.full_metrics_arr = [ansatz["eval_metrics"] 
-                                 for ansatz in self.dict_of_preran_circuits.values()]
+                                 for ansatz in self.config.dict_of_preran_circuits.values()]
+        self.per_gen_diversity = []
+        self.full_pop_diversity = []
         
         self.generate_initial_pop()
 
     def generate_ansatz(self, dicts=None, diagram=None):
         if dicts is None and diagram is None:
             ansatz = Individual(
-                        self.n_qubits,
-                        self.max_generate_moments,
-                        self.max_vector_moments,
-                        self.genepool,
-                        self.rng_seed,
+                        self.config.n_qubits,
+                        self.config.max_moments,
+                        self.config.max_vector_moments,
+                        self.config.genepool,
+                        self.config.rng_seed,
                     )
         elif dicts is not None:
             ansatz = Individual(
-                        self.n_qubits,
-                        self.max_generate_moments,
-                        self.max_vector_moments,
-                        self.genepool,
-                        self.rng_seed,
+                        self.config.n_qubits,
+                        self.config.max_moments,
+                        self.config.max_vector_moments,
+                        self.config.genepool,
+                        self.config.rng_seed,
                         dicts=dicts
                     )
         elif diagram is not None:
             ansatz = Individual(
-                        self.n_qubits,
-                        self.max_generate_moments,
-                        self.max_vector_moments,
-                        self.genepool,
-                        self.rng_seed,
+                        self.config.n_qubits,
+                        self.config.max_moments,
+                        self.config.max_vector_moments,
+                        self.config.genepool,
+                        self.config.rng_seed,
                         diagram=diagram
                     )
         else:
             raise ValueError('You must choose to generate an ansatz through' + 
                              'EITHER dicts OR diagram. Not both.')
-        if ansatz.n_moments > self.max_vector_moments:
+        if ansatz.n_moments > self.config.max_vector_moments:
             self.update_circuit_set(2 * ansatz.n_moments)
         return ansatz
     
     def update_circuit_set(self, max_vector_moments):
-        self.max_vector_moments = max_vector_moments
+        self.config.max_vector_moments = max_vector_moments
         self.set_of_all_circuit_vectors = set()
         for ansatz in self.full_population+self.temp_pop:
             ansatz.generate_vector(max_vector_moments)
@@ -134,6 +138,26 @@ class Model(GA_Model):
     def clean(self):
         self.temp_pop = []
 
+    def distance(self, circuit_A, population, INIT=False):
+        if (INIT and self.config.init_distance_method == 'euclidean') or (not INIT and self.config.distance_method == 'euclidean'):
+            return np.mean(
+                    euclidean_distances(
+                        circuit_A,
+                        self.generate_ansatz(diagram=self.config.empty_circuit_diagram),
+                        population,
+                    )
+                ).item()
+        elif (INIT and self.config.init_distance_method == 'string') or (not INIT and self.config.distance_method == 'string'):
+            return np.mean(
+                    string_disctances(
+                        circuit_A,
+                        self.config.empty_circuit_diagram,
+                        population,
+                    )
+                ).item()
+        else:
+            raise ValueError('distance_method must be either \'euclidean\' or \'string\'.')
+
     def generate_initial_pop(self):
         """
         Generates the initial population by making many more individuals than needed, and pruning down to pop_size by taking maximally different individuals.
@@ -141,43 +165,28 @@ class Model(GA_Model):
         TODO: Change to a custom distance calculation that can be stored in each ansatz?
         """
         start_time = time.time()
-        for _ in range(self.init_pop_size):
+        for _ in range(self.config.init_pop_size):
             self.temp_pop.append(
                 self.generate_ansatz()
             )
 
         ## Euclidean Distance on Vectorized Circuits ##
         selected_ixs = set()
-        for i in range(self.pop_size):
+        for i in range(self.config.pop_size):
             if i == 0:
-                random_ix = self.rng.integers(0, self.init_pop_size)
+                random_ix = self.rng.integers(0, self.config.init_pop_size)
                 self.population.append(self.temp_pop[random_ix])
                 continue
 
             distance_arr = []
             for j in range(len(self.population)):
-                if self.init_distance_method == 'euclidean':
-                    distance_arr.append(
-                        np.mean(
-                            euclidean_distances(
-                                self.population[j],
-                                self.generate_ansatz(diagram=self.empty_circuit_diagram),
-                                self.temp_pop,
-                            )
-                        )
+                distance_arr.append(
+                    self.distance(
+                        self.population[j],
+                        self.temp_pop,
+                        INIT=True
                     )
-                elif self.init_distance_method == 'string':
-                    distance_arr.append(
-                        np.mean(
-                            string_disctances(
-                                self.population[j],
-                                self.empty_circuit_diagram,
-                                self.temp_pop,
-                            )
-                        )
-                    )
-                else:
-                    raise ValueError('distance_method must be either \'euclidean\' or \'string\'.')
+                )
 
             sorted_ixs = np.argsort(distance_arr)
             selected_ix = sorted_ixs[-1]
@@ -192,7 +201,8 @@ class Model(GA_Model):
         end_time = time.time()
         exec_time = end_time - start_time
         self.total_ga_time += exec_time
-        print(f"Initial generation/selection in {exec_time:.2f} seconds")
+        if self.OUTPUT:
+            print(f"Initial generation/selection in {exec_time:.2f} seconds")
 
     def evolve(self):
         """
@@ -200,7 +210,8 @@ class Model(GA_Model):
         """
         gen = 0
         while True:
-            print(f"GA iteration {gen}")
+            if self.OUTPUT:
+                print(f"GA iteration {gen}")
 
             # Evaluating Fitness (Running VQCs) # 
             vqc_start_time = time.time()
@@ -222,34 +233,36 @@ class Model(GA_Model):
 
             self.population.extend(children)
             self.population.extend(immigrants)
-
-            print(
-                f"Best fitness: {self.best_perf['fitness']}, " + 
-                f"Best metrics: {self.best_perf['eval_metrics']}, \n" +
-                f"Best ansatz: \n{self.best_perf['diagram']}"
-            )
+            if self.OUTPUT:
+                print(
+                    f"Best fitness: {self.best_perf['fitness']}, " + 
+                    f"Best metrics: {self.best_perf['eval_metrics']}, \n" +
+                    f"Best ansatz: \n{self.best_perf['diagram']}"
+                )
 
             
-            if (gen - self.best_perf["generation"]) > self.n_steps_patience:
+            if (gen - self.best_perf["generation"]) > self.config.n_steps_patience:
                 break
-            print(
-                "filepath is: ",
-                make_results_json(results, self.start_time, self.ga_output_path, gen)
-            )
+            if self.OUTPUT:
+                print(
+                    "filepath is: ",
+                    make_results_json(results, self.start_time, self.config.ga_output_path, gen)
+                )
             gen += 1
 
             post_process_end_time = time.time()
             self.total_ga_time += (post_process_end_time - post_process_start_time)
             running_total_time = self.total_ga_time + self.total_vqc_time
-            print(f'GA (classical) computations have taken {self.total_ga_time:0.2f} seconds \n     and {100 * self.total_ga_time / running_total_time:0.2f}% of the total time so far.')
-            print(f'VQC (quantum) computations have taken {self.total_vqc_time:0.2f} seconds \n     and {100 * self.total_vqc_time / running_total_time:0.2f}% of the total time so far.')
-
-        print(
-            "filepath is: ",
-            make_results_json(
-                results, self.start_time, self.ga_output_path, gen, final_flag=True
-            ),
-        )
+            if self.OUTPUT:
+                print(f'GA (classical) computations have taken {self.total_ga_time:0.2f} seconds \n     and {100 * self.total_ga_time / running_total_time:0.2f}% of the total time so far.')
+                print(f'VQC (quantum) computations have taken {self.total_vqc_time:0.2f} seconds \n     and {100 * self.total_vqc_time / running_total_time:0.2f}% of the total time so far.')
+        if self.OUTPUT:
+            print(
+                "filepath is: ",
+                make_results_json(
+                    results, self.start_time, self.config.ga_output_path, gen, final_flag=True
+                ),
+            )
 
         post_process_end_time = time.time()
         self.total_ga_time += (post_process_end_time - post_process_start_time)
@@ -268,27 +281,30 @@ class Model(GA_Model):
         output_arr = []
         for i in range(20):
             vqc_config_ansatz["ix"] = i
-            output_arr.append(self.vqc(vqc_config_ansatz))
+            output_arr.append(self.config.vqc(vqc_config_ansatz))
         self.fitness_arr = [output["fitness_metric"] for output in output_arr]
-        print(f"Final fitness distribution: {self.fitness_arr}")
-        print(f"Avg fitness: {np.mean(self.fitness_arr)},  Std Dev: {np.std(self.fitness_arr)}, Std Dev of Mean: {np.std(self.fitness_arr) / (20**0.5)}")
+        if self.OUTPUT:
+            print(f"Final fitness distribution: {self.fitness_arr}")
+            print(f"Avg fitness: {np.mean(self.fitness_arr)},  Std Dev: {np.std(self.fitness_arr)}, Std Dev of Mean: {np.std(self.fitness_arr) / (20**0.5)}")
         if self.n_eval_metrics > 0:
             self.metrics_arr = [output["eval_metrics"] for output in output_arr]
             for metric in self.metrics_arr[0].keys():
                 metric_list = [m[metric] for m in self.metrics_arr]
-                print(f"Final {metric} distribution: {metric_list}")
-                print(f"Avg {metric}: {np.mean(metric_list)},  Std Dev: {np.std(metric_list)}, Std Dev of Mean: {np.std(metric_list) / (20**0.5)}")
+                if self.OUTPUT:
+                    print(f"Final {metric} distribution: {metric_list}")
+                    print(f"Avg {metric}: {np.mean(metric_list)},  Std Dev: {np.std(metric_list)}, Std Dev of Mean: {np.std(metric_list) / (20**0.5)}")
 
         retrain_end_time = time.time()
         self.retrain_time = retrain_end_time - retrain_start_time
 
         TOTAL_TIME = self.total_ga_time + self.total_vqc_time + self.retrain_time
-        print(f'Final GA (classical) time: {self.total_ga_time:0.2f} seconds')
-        print(f'GA fraction of total time: {100 * self.total_ga_time / TOTAL_TIME:0.2f} %')
-        print(f'Final VQC (quantum) time: {self.total_vqc_time:0.2f} seconds')
-        print(f'VQC fraction of total time: {100 * self.total_vqc_time / TOTAL_TIME:0.2f} %')
-        print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time:0.2f} seconds')
-        print(f'Retrain fraction of total time: {100 * self.retrain_time / TOTAL_TIME:0.2f} %')
+        if self.OUTPUT:
+            print(f'Final GA (classical) time: {self.total_ga_time:0.2f} seconds')
+            print(f'GA fraction of total time: {100 * self.total_ga_time / TOTAL_TIME:0.2f} %')
+            print(f'Final VQC (quantum) time: {self.total_vqc_time:0.2f} seconds')
+            print(f'VQC fraction of total time: {100 * self.total_vqc_time / TOTAL_TIME:0.2f} %')
+            print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time:0.2f} seconds')
+            print(f'Retrain fraction of total time: {100 * self.retrain_time / TOTAL_TIME:0.2f} %')
 
     def evaluate_fitness(self, gen):
         """
@@ -296,6 +312,7 @@ class Model(GA_Model):
 
         TODO: make distinction between 'max_moments' for generating new cirsuits and 'max_moments' for making vectors
         """
+        # Setup function args for multithreading #
         ix = 0
         args_arr = []
         for ansatz in self.population:
@@ -312,16 +329,37 @@ class Model(GA_Model):
             vqc_config_ansatz["gen"] = gen
             args_arr.append(copy.deepcopy(vqc_config_ansatz))
             ix += 1
+        
+        # Diversity Tracking #
+        gen_distance_arr = []
+        for ansatz in self.population:
+            gen_distance_arr.append(
+                self.distance(
+                    ansatz,
+                    self.population
+                )
+            )
+        self.per_gen_diversity.append(np.mean(gen_distance_arr))
+        full_distance_arr = []
+        for ansatz in self.full_population:
+            full_distance_arr.append(
+                self.distance(
+                    ansatz,
+                    self.full_population
+                )
+            )
+        self.full_pop_diversity.append(full_distance_arr)
 
+        # Optimize the current popualtion ansatz using multithreading #
         start_time = time.time()
         output_arr = []
-        for i in range(self.pop_size // self.max_concurrent):
-            with mp.get_context("spawn").Pool(processes=self.max_concurrent) as pool:
+        for i in range(self.config.pop_size // self.config.max_concurrent):
+            with mp.get_context("spawn").Pool(processes=self.config.max_concurrent) as pool:
                 output_arr.extend(
                     pool.map(
-                        self.vqc,
+                        self.config.vqc,
                         args_arr[
-                            i * self.max_concurrent : (i + 1) * self.max_concurrent
+                            i * self.config.max_concurrent : (i + 1) * self.config.max_concurrent
                         ],
                     )
                 )
@@ -330,17 +368,19 @@ class Model(GA_Model):
         #   -> (ie. default python classes or have custom serialization)
         self.fitness_arr = [output["fitness_metric"] for output in output_arr]
         self.full_fitness_arr.extend(self.fitness_arr)
-        if self.n_eval_metrics > 0:
+        if self.config.n_eval_metrics > 0:
             self.metrics_arr = [output["eval_metrics"] for output in output_arr]
             self.full_metrics_arr.extend(self.metrics_arr)
 
         end_time = time.time()
         exec_time = end_time - start_time
         self.total_vqc_time += exec_time
-        print(f"QML Optimization in {exec_time:.2f} seconds")
+        if self.OUTPUT:
+            print(f"QML Optimization in {exec_time:.2f} seconds")
 
         if self.best_perf["fitness"] < np.amax(self.fitness_arr):
-            print("!! IMPROVED PERFORMANCE !!")
+            if self.OUTPUT:
+                print("!! IMPROVED PERFORMANCE !!")
             self.best_perf["fitness"] = np.amax(self.fitness_arr).item()
             chosen_index = np.argmax(self.fitness_arr).item()
             self.best_perf["ansatz"] = copy.deepcopy(
@@ -355,19 +395,19 @@ class Model(GA_Model):
             self.best_perf["generation"] = gen
             self.best_perf["index"] = chosen_index
 
-            if self.n_eval_metrics > 0:
+            if self.config.n_eval_metrics > 0:
                 self.best_perf["eval_metrics"] = copy.deepcopy(
                     self.metrics_arr[chosen_index]
                 )
 
     def make_results(self, gen):
         ### tSNE clustering ###
-        destdir_curves = os.path.join(self.ga_output_path, "ga_curves", "run-%s" % self.start_time)
+        destdir_curves = os.path.join(self.config.ga_output_path, "ga_curves", "run-%s" % self.start_time)
         if not os.path.exists(destdir_curves):
             os.makedirs(destdir_curves)
         data_tsne_arr = []
         for perp in range(2, len(self.full_population)):
-            data_tsne = tsne(self.full_population, rng_seed=self.rng_seed, perplexity=perp)
+            data_tsne = tsne(self.full_population, rng_seed=self.config.rng_seed, perplexity=perp)
             data_tsne_arr.append(data_tsne.tolist())
             x, y = data_tsne[:, 0].T, data_tsne[:, 1].T
             filepath_tsne = os.path.join(
@@ -387,14 +427,19 @@ class Model(GA_Model):
             plt.close(1)
 
         results = {
+            "vqc_optimization_time": self.total_vqc_time,
+            "ga_post-processing_time": self.total_ga_time,
+            "vqc_retrain_time": self.retrain_time,
             "full_population_vectors": [ansatz.vector for ansatz in self.full_population],
             "full_population_drawings": [ansatz.diagram for ansatz in self.full_population],
-            "final_max_vector_moments": self.max_vector_moments,
+            "final_max_vector_moments": self.config.max_vector_moments,
             "full_population_fitness": self.full_fitness_arr,
             "full_tsne_data": data_tsne_arr,
-            "full_generation": [i.dicts for i in self.population],
-            "full_drawn_generation": [i.diagram for i in self.population],
-            "full_fitness_generation": [i for i in self.fitness_arr],
+            "per_gen_diversity": self.per_gen_diversity,
+            "full_pop_diversity": self.full_pop_diversity,
+            "current_generation": [i.dicts for i in self.population],
+            "current_drawn_generation": [i.diagram for i in self.population],
+            "current_generation_fitness": [i for i in self.fitness_arr],
             "fitness_stats": f"Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}",
             "best_ansatz": self.best_perf["dicts"],
             "best_drawn_ansatz": self.best_perf["diagram"],
@@ -402,7 +447,7 @@ class Model(GA_Model):
             "best_fitness_gen": self.best_perf["generation"],
             "best_fitness_ix": self.best_perf["index"],
         }
-        if self.n_eval_metrics > 0:
+        if self.config.n_eval_metrics > 0:
             results["full_population_metrics"] = self.full_metrics_arr
             results["eval_metrics"] = self.metrics_arr
             results["eval_metrics_stats"] = [
@@ -419,7 +464,7 @@ class Model(GA_Model):
         Picks the top performing ansatz from a generation to mate and mutate for the next generation.
         """
         winner_arr = []
-        for _ in range(self.n_winners):
+        for _ in range(self.config.n_winners):
             winner_ix = np.argmax(self.fitness_arr)
             winner = self.population[winner_ix]
             winner_arr.append(winner)
@@ -437,18 +482,18 @@ class Model(GA_Model):
         children_arr = []
         swap_ixs = []
         parents = self.deep_permutation(parents)
-        while len(parents) < self.pop_size - self.n_new_individuals:
+        while len(parents) < self.config.pop_size - self.config.n_new_individuals:
             parents.extend(self.deep_permutation(parents))
 
         # Create index pairings for swapping
-        for j in range(len(parents) // self.n_winners):
-            for i in range(self.n_winners):
+        for j in range(len(parents) // self.config.n_winners):
+            for i in range(self.config.n_winners):
                 if i % 2 != 0:
                     continue
                 swap_ixs.append(
                     {
-                        "parent_A": (j * self.n_winners) + i, 
-                        "parent_B": (j * self.n_winners) + i + 1
+                        "parent_A": (j * self.config.n_winners) + i, 
+                        "parent_B": (j * self.config.n_winners) + i + 1
                     }
                 )
 
@@ -462,7 +507,7 @@ class Model(GA_Model):
 
             moment_A = self.rng.integers(child_A.n_moments) 
             moment_B = self.rng.integers(child_B.n_moments)
-            qubit_A = qubit_B = self.rng.integers(self.n_qubits).item()
+            qubit_A = qubit_B = self.rng.integers(self.config.n_qubits).item()
             swap_set.add(qubit_A)
 
             def check_gate(qubit_str, qubit_num):
@@ -492,7 +537,7 @@ class Model(GA_Model):
 
             child_A.overwrite(moment_A, swap_set, parents[swap_ix["parent_B"]][moment_B])
             child_B.overwrite(moment_B, swap_set, parents[swap_ix["parent_A"]][moment_A])
-            if child_A.n_vector_moments > self.max_vector_moments or child_B.n_vector_moments > self.max_vector_moments:
+            if child_A.n_vector_moments > self.config.max_vector_moments or child_B.n_vector_moments > self.config.max_vector_moments:
                 self.update_circuit_set(max(child_A.n_vector_moments, child_B.n_vector_moments))
             children_arr.extend([child_A, child_B])
 
@@ -523,7 +568,7 @@ class Model(GA_Model):
         """
         ansatz_backup = copy.deepcopy(ansatz)
         if n_mutations is None:
-            n_mutations = self.n_mutations
+            n_mutations = self.config.n_mutations
         count = 0
         while True:
             if count == 5:
@@ -531,10 +576,10 @@ class Model(GA_Model):
                 count = 0
             for _ in range(n_mutations):
                 moment = self.rng.integers(ansatz.n_moments)
-                qubit = self.rng.integers(self.n_qubits)
+                qubit = self.rng.integers(self.config.n_qubits)
                 ansatz.mutate(moment, qubit)
 
-            if ansatz.n_vector_moments > self.max_vector_moments:
+            if ansatz.n_vector_moments > self.config.max_vector_moments:
                 self.update_circuit_set(ansatz.n_vector_moments)
             if ansatz.diagram in self.set_of_all_circuit_diagrams:
                 ansatz = copy.deepcopy(ansatz_backup)
@@ -549,13 +594,13 @@ class Model(GA_Model):
         immigrant_arr = []
         for _ in range(n_individuals):
             ansatz_arr = []
-            distances_arr = []
+            distance_arr = []
             for __ in range(100):
                 ansatz = self.generate_ansatz()
                 count = 0
                 while True:
                     if count == 10:
-                        self.max_generate_moments += 1
+                        self.config.max_moments += 1
                         ansatz = self.generate_ansatz()
                         count = 0
                     self.temp_pop.append(ansatz)
@@ -567,29 +612,13 @@ class Model(GA_Model):
                     ansatz_arr.append(ansatz)
                     break
             for j in range(100):
-                if self.distance_method == 'euclidean':
-                    distances_arr.append(
-                        np.mean(
-                            euclidean_distances(
-                                ansatz_arr[j], 
-                                self.generate_ansatz(diagram=self.empty_circuit_diagram),
-                                self.full_population
-                            )
-                        )
+                distance_arr.append(
+                    self.distance(
+                        ansatz_arr[j],
+                        self.full_population
                     )
-                elif self.distance_method == 'string':
-                    distances_arr.append(
-                        np.mean(
-                            string_disctances(
-                                ansatz_arr[j],
-                                self.empty_circuit_diagram,
-                                self.full_population,
-                            )
-                        )
-                    )
-                else:
-                    raise ValueError('distance_method must be either \'euclidean\' or \'string\'.')
-            ansatz = ansatz_arr[np.argmax(distances_arr)]
+                )
+            ansatz = ansatz_arr[np.argmax(distance_arr)]
             immigrant_arr.append(
                 ansatz
             )
@@ -598,7 +627,7 @@ class Model(GA_Model):
         return immigrant_arr
             
     def anneal_manager(self, gen):
-        num_children = self.pop_size // 2
-        num_immigrants = self.pop_size - num_children
+        num_children = self.config.pop_size // 2
+        num_immigrants = self.config.pop_size - num_children
         
         return num_children, num_immigrants
