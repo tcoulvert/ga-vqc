@@ -34,7 +34,7 @@ def euclidean_distances(ansatz_A, empty_circuit_ansatz, population):
     
     return np.array(distances) / np.array(baseline_distances)
 
-def string_disctances(ansatz_A, empty_circuit_diagram, population):
+def string_distances(ansatz_A, empty_circuit_diagram, population):
     s = SequenceMatcher(isjunk=lambda x: x in ' ')
 
     s.set_seq2(empty_circuit_diagram)
