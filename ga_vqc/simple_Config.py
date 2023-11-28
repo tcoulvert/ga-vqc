@@ -55,6 +55,10 @@ class Config():
         self.n_winners = 2 # needs to be an even number
         self.n_mutations = 1
         self.n_steps_patience = 15
+
+        self.n_fitness_metrics = 1
+        self.compare_fitness = Config.compare_fitness
+        self.choose_best = Config.choose_best
         self.n_eval_metrics = 0
 
         if dict_of_preran_circuits is None:
@@ -80,3 +84,23 @@ class Config():
         
         self.rng_seed = rng_seed
         
+    def compare_fitness(fitness_A, fitness_B):
+        if fitness_A > fitness_B:
+            return 1
+        else:
+            return 0
+    
+    def choose_best(best_arr, fitness_arr):
+        return_best_ix_set = set([i for i in best_arr])
+        return_fitness_ix_set = set()
+        for i in range(len(fitness_arr)):
+            add_flag = True
+            for j in range(len(best_arr)):
+                if best_arr[j] > fitness_arr[i]:
+                    add_flag = False
+                    break
+            
+            if add_flag:
+                return_fitness_ix_set.add(i)
+
+        return return_best_ix_set, return_fitness_ix_set
