@@ -387,6 +387,8 @@ class Model(GA_Model):
 
         best_keep_ix_set, new_keep_ix_set = self.config.choose_best([best_perf["fitness metrics"] for best_perf in self.best_perf_arr], self.fitness_arr)
         for ix in list(new_keep_ix_set):
+            if self.OUTPUT:
+                print('NEW GOOD CIRCUIT')
             self.new_best_perf(fitness_metrics=self.fitness_arr[ix], 
                                eval_metrics=copy.deepcopy(
                                     self.metrics_arr[ix]

@@ -75,7 +75,7 @@ class Config():
         self.dict_of_preran_circuits[
             self.empty_circuit_diagram
         ] = {
-                "fitness_metric": empty_circuit_data["fitness_metric"],
+                "fitness_metrics": empty_circuit_data["fitness_metrics"],
                 "eval_metrics": empty_circuit_data["eval_metrics"]
             }
         
