@@ -63,8 +63,12 @@ class Model(GA_Model):
         
         self.generate_initial_pop()
     
-    def new_best_perf(self, fitness_metrics=0, eval_metrics=[], 
+    def new_best_perf(self, fitness_metrics=None, eval_metrics=None, 
                       ansatz=None, dicts=[], diagram=str(), generation=0, index=0):
+        if fitness_metrics is None:
+            fitness_metrics = self.config.dict_of_preran_circuits[self.config.empty_circuit_diagram]["fitness_metrics"]
+        if eval_metrics is None:
+            eval_metrics = self.config.dict_of_preran_circuits[self.config.empty_circuit_diagram]["eval_metrics"]
         self.best_perf_arr.append({
             "fitness_metrics": fitness_metrics,
             "eval_metrics": eval_metrics,
@@ -74,6 +78,7 @@ class Model(GA_Model):
             "generation": generation,
             "index": index,
         })
+        
     
     def update_best_perf(self, best_keep_ixs):
         temp_best_perf_arr = []
@@ -87,12 +92,12 @@ class Model(GA_Model):
         for i in range(len(temp_best_perf_arr)):
             next_best_ix = i
             for j in range(len(temp_best_perf_arr)):
-                if self.config.compare_fitness(temp_best_perf_arr[j]["fitness metrics"], 
-                        temp_best_perf_arr[i]["fitness metrics"]):
+                if self.config.compare_fitness(temp_best_perf_arr[j]["fitness_metrics"], 
+                        temp_best_perf_arr[i]["fitness_metrics"]):
                     next_best_ix = j
             sorted_ixs.append(next_best_ix)
 
-        self.best_perf_arr = [copy.deepcopy(best_perf) for best_perf in temp_best_perf_arr]
+        self.best_perf_arr = [copy.deepcopy(temp_best_perf_arr[i]) for i in sorted_ixs]
 
     def generate_ansatz(self, dicts=None, diagram=None):
         if dicts is None and diagram is None:
@@ -371,13 +376,13 @@ class Model(GA_Model):
         
         # Both the fitness metrics and eval_metrics must be JSON serializable 
         #   -> (ie. default python classes or have custom serialization)
-        for _ in range(self.config.n_fitness_metrics):
-            self.fitness_arr = [output["fitness_metrics"] for output in output_arr]
-            self.full_fitness_arr.extend(self.fitness_arr)
+        # for _ in range(self.config.n_fitness_metrics):
+        self.fitness_arr = [output["fitness_metrics"] for output in output_arr]
+        self.full_fitness_arr.extend(self.fitness_arr)
 
-        for _ in range(self.config.n_eval_metrics):
-            self.metrics_arr = [output["eval_metrics"] for output in output_arr]
-            self.full_metrics_arr.extend(self.metrics_arr)
+        # for _ in range(self.config.n_eval_metrics):
+        self.metrics_arr = [output["eval_metrics"] for output in output_arr]
+        self.full_metrics_arr.extend(self.metrics_arr)
 
         end_time = time.time()
         exec_time = end_time - start_time
@@ -385,7 +390,7 @@ class Model(GA_Model):
         if self.OUTPUT:
             print(f"QML Optimization in {exec_time:.2f} seconds")
 
-        best_keep_ix_set, new_keep_ix_set = self.config.choose_best([best_perf["fitness metrics"] for best_perf in self.best_perf_arr], self.fitness_arr)
+        best_keep_ix_set, new_keep_ix_set = self.config.choose_best([best_perf['fitness_metrics'] for best_perf in self.best_perf_arr], self.fitness_arr)
         for ix in list(new_keep_ix_set):
             if self.OUTPUT:
                 print('NEW GOOD CIRCUIT')
@@ -445,7 +450,7 @@ class Model(GA_Model):
             )
             plt.figure(1)
             plt.style.use("seaborn")
-            plt.scatter(x, y, marker=".", c=[m["avg auroc"] for m in self.full_metrics_arr], cmap=plt.set_cmap('plasma'))
+            plt.scatter(x, y, marker=".", c=[m["avg_auroc"] for m in self.full_metrics_arr], cmap=plt.set_cmap('plasma'))
             plt.ylabel("a.u.")
             plt.xlabel("a.u.")
             cbar = plt.colorbar()
@@ -468,23 +473,23 @@ class Model(GA_Model):
             "current_generation": [i.dicts for i in self.population],
             "current_drawn_generation": [i.diagram for i in self.population],
             "current_generation_fitness": [i for i in self.fitness_arr],
-            "fitness_stats": f"Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}",
-            # "best_ansatz": self.best_perf["dicts"],
-            # "best_drawn_ansatz": self.best_perf["diagram"],
-            # "best_fitness": self.best_perf["fitness"],
-            # "best_fitness_gen": self.best_perf["generation"],
-            # "best_fitness_ix": self.best_perf["index"],
-            "best_perf_arr": self.best_perf_arr
+            # "fitness_stats": f"Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}",
+            "best_ansatzes": [best_perf["dicts"] for best_perf in self.best_perf_arr],
+            "best_drawn_ansatzes": [best_perf["diagram"] for best_perf in self.best_perf_arr],
+            "best_fitnesses": [best_perf["fitness_metrics"] for best_perf in self.best_perf_arr],
+            "best_fitness_gens": [best_perf["generation"] for best_perf in self.best_perf_arr],
+            "best_fitness_ixs": [best_perf["index"] for best_perf in self.best_perf_arr],
+            # "best_perf_arr": self.best_perf_arr
         }
         if self.config.n_eval_metrics > 0:
             results["full_population_metrics"] = self.full_metrics_arr
             results["eval_metrics"] = self.metrics_arr
-            results["eval_metrics_stats"] = [
-                f"Avg {k}: {np.mean([i[k] for i in self.metrics_arr])}, "
-                + f"Std. Dev: {np.std([i[k] for i in self.metrics_arr])}"
-                for k in self.metrics_arr[0].keys()
-            ]
-            # results["best_eval_metrics"] = self.best_perf["eval_metrics"]
+            # results["eval_metrics_stats"] = [
+            #     f"Avg {k}: {np.mean([i[k] for i in self.metrics_arr])}, "
+            #     + f"Std. Dev: {np.std([i[k] for i in self.metrics_arr])}"
+            #     for k in self.metrics_arr[0].keys()
+            # ]
+            results["best_eval_metrics"] = [best_perf["eval_metrics"] for best_perf in self.best_perf_arr]
 
         return results
 

@@ -1,5 +1,7 @@
 # GA for VQC Ansatz Search
-This is a module to support Variational Quantum Circuits by optimizing the ansatz. The ansatz optimization is performed using a Genetic Algorithm, which can be sped up with GPUs.
+This is a module to support Variational Quantum Circuits by optimizing the ansatz. The ansatz optimization is performed using a Genetic Algorithm, which can be parallelized with GPUs.
+
+For a detailed example of using this package see the https://github.com/tcoulvert/QAE_4_HEP repository.
 
 
 ## Installation
