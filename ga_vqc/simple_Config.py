@@ -54,7 +54,7 @@ class Config():
        
         self.n_winners = 2 # needs to be an even number
         self.n_mutations = 1
-        self.n_steps_patience = 15
+        self.n_steps_patience = 5
 
         self.n_fitness_metrics = 1
         self.compare_fitness = Config.compare_fitness
