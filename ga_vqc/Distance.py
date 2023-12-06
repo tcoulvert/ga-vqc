@@ -37,19 +37,25 @@ def euclidean_distances(ansatz_A, empty_circuit_ansatz, population):
 def string_distances(ansatz_A, empty_circuit_diagram, population):
     s = SequenceMatcher(isjunk=lambda x: x in ' ')
 
+    # By adding in distance to circuit A in denom it makes distance matrix symmetric
+    #   -> doubled distances so that diagonal of matrix remains all 1s
     s.set_seq2(empty_circuit_diagram)
-    baseline_distances = []
+    s.set_seq1(ansatz_A.diagram)
+    A_baseline_distance = s.ratio()
+
+    B_baseline_distances = []
     for ansatz_B in population:
         s.set_seq1(ansatz_B.diagram)
-        baseline_distances.append(s.ratio())
+        B_baseline_distances.append(s.ratio() + A_baseline_distance)
 
     s.set_seq2(ansatz_A.diagram)
-    distances = []
+    doubled_distances = []
     for ansatz_B in population:
         s.set_seq1(ansatz_B.diagram)
-        distances.append(s.ratio())
+        doubled_distances.append(2 * s.ratio())
 
-    return np.array(distances) / np.array(baseline_distances)
+    # return np.array(doubled_distances) / np.array(B_baseline_distances)
+    return  np.array(B_baseline_distances) / np.array(doubled_distances)
 
 
 def tsne(population, perplexity=2, rng_seed=None):

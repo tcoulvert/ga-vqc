@@ -162,7 +162,7 @@ class Model(GA_Model):
                 ).item()
         else:
             raise ValueError('distance_method must be either \'euclidean\' or \'string\'.')
-
+        
     def generate_initial_pop(self):
         """
         Generates the initial population by making many more individuals than needed, and pruning down to pop_size by taking maximally different individuals.
@@ -278,34 +278,27 @@ class Model(GA_Model):
         self.total_ga_time += (post_process_end_time - post_process_start_time)
 
         ### Final re-training for std. dev. estimate ###
-        # retrain_start_time = time.time()
+        retrain_start_time = time.time()
 
-        # ansatz = self.best_perf["ansatz"]
-        # vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
-        # vqc_config_ansatz["dicts"] = ansatz.dicts
-        # vqc_config_ansatz["qml"] = ansatz.qml
-        # vqc_config_ansatz["diagram"] = ansatz.diagram
-        # vqc_config_ansatz["params"] = ansatz.params
-        # vqc_config_ansatz["gen"] = gen
+        ansatz = self.best_perf["ansatz"]
+        vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
+        vqc_config_ansatz["n_retrains"] = 20
+        vqc_config_ansatz["dicts"] = ansatz.dicts
+        vqc_config_ansatz["qml"] = ansatz.qml
+        vqc_config_ansatz["diagram"] = ansatz.diagram
+        vqc_config_ansatz["params"] = ansatz.params
+        vqc_config_ansatz["gen"] = gen
         
-        # output_arr = []
-        # for i in range(20):
-        #     vqc_config_ansatz["ix"] = i
-        #     output_arr.append(self.config.vqc(vqc_config_ansatz))
-        # self.fitness_arr = [output["fitness_metrics"] for output in output_arr]
-        # if self.OUTPUT:
-        #     print(f"Final fitness distribution: {self.fitness_arr}")
-        #     print(f"Avg fitness: {np.mean(self.fitness_arr)},  Std Dev: {np.std(self.fitness_arr)}, Std Dev of Mean: {np.std(self.fitness_arr) / (20**0.5)}")
-        # if self.n_eval_metrics > 0:
-        #     self.metrics_arr = [output["eval_metrics"] for output in output_arr]
-        #     for metric in self.metrics_arr[0].keys():
-        #         metric_list = [m[metric] for m in self.metrics_arr]
-        #         if self.OUTPUT:
-        #             print(f"Final {metric} distribution: {metric_list}")
-        #             print(f"Avg {metric}: {np.mean(metric_list)},  Std Dev: {np.std(metric_list)}, Std Dev of Mean: {np.std(metric_list) / (20**0.5)}")
+        final_output = self.config.vqc(vqc_config_ansatz)
+        final_fitness = final_output["fitness_metrics"]
+        final_metrics = final_output["eval_metrics"]
+        if self.OUTPUT:
+            print(f"Final fitness: {final_fitness}")
+            for metric in final_metrics.keys():
+                print(f"Final {metric}: {final_metrics[metric]}")
 
-        # retrain_end_time = time.time()
-        # self.retrain_time = retrain_end_time - retrain_start_time
+        retrain_end_time = time.time()
+        self.retrain_time = retrain_end_time - retrain_start_time
 
         TOTAL_TIME = self.total_ga_time + self.total_vqc_time + self.retrain_time
         if self.OUTPUT:
@@ -313,8 +306,8 @@ class Model(GA_Model):
             print(f'GA fraction of total time: {100 * self.total_ga_time / TOTAL_TIME:0.2f} %')
             print(f'Final VQC (quantum) time: {self.total_vqc_time:0.2f} seconds')
             print(f'VQC fraction of total time: {100 * self.total_vqc_time / TOTAL_TIME:0.2f} %')
-            # print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time:0.2f} seconds')
-            # print(f'Retrain fraction of total time: {100 * self.retrain_time / TOTAL_TIME:0.2f} %')
+            print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time:0.2f} seconds')
+            print(f'Retrain fraction of total time: {100 * self.retrain_time / TOTAL_TIME:0.2f} %')
 
     def evaluate_fitness(self, gen):
         """
@@ -412,27 +405,7 @@ class Model(GA_Model):
             best_keep_ix_set.add(len(best_keep_ix_set))
         self.update_best_perf(best_keep_ix_set)
 
-        # if self.best_perf["fitness"] < np.amax(self.fitness_arr):
-            
-        #     self.best_perf["fitness"] = np.amax(self.fitness_arr).item()
-        #     chosen_index = np.argmax(self.fitness_arr).item()
-        #     self.best_perf["ansatz"] = copy.deepcopy(
-        #         self.population[chosen_index]
-        #     )
-        #     self.best_perf["dicts"] = copy.deepcopy(
-        #         self.population[chosen_index].dicts
-        #     )
-        #     self.best_perf["diagram"] = copy.deepcopy(
-        #         self.population[chosen_index].diagram
-        #     )
-        #     self.best_perf["generation"] = gen
-        #     self.best_perf["index"] = chosen_index
-
-        #     if self.config.n_eval_metrics > 0:
-        #         self.best_perf["eval_metrics"] = copy.deepcopy(
-        #             self.metrics_arr[chosen_index]
-        #         )
-
+        
     def make_results(self, gen):
         ### tSNE clustering ###
         destdir_curves = os.path.join(self.config.ga_output_path, "ga_curves", "run-%s" % self.start_time)
@@ -467,29 +440,22 @@ class Model(GA_Model):
             "full_population_drawings": [ansatz.diagram for ansatz in self.full_population],
             "final_max_vector_moments": self.config.max_vector_moments,
             "full_population_fitness": self.full_fitness_arr,
+            "full_population_metrics": self.full_metrics_arr,
             "full_tsne_data": data_tsne_arr,
             "per_gen_diversity": self.per_gen_diversity,
             "full_pop_diversity": self.full_pop_diversity,
             "current_generation": [i.dicts for i in self.population],
             "current_drawn_generation": [i.diagram for i in self.population],
             "current_generation_fitness": [i for i in self.fitness_arr],
-            # "fitness_stats": f"Avg fitness: {np.mean(self.fitness_arr)}, Std. Dev: {np.std(self.fitness_arr)}",
+            "current_generation_eval_metrics": [i for i in self.metrics_arr],
             "best_ansatzes": [best_perf["dicts"] for best_perf in self.best_perf_arr],
             "best_drawn_ansatzes": [best_perf["diagram"] for best_perf in self.best_perf_arr],
             "best_fitnesses": [best_perf["fitness_metrics"] for best_perf in self.best_perf_arr],
             "best_fitness_gens": [best_perf["generation"] for best_perf in self.best_perf_arr],
             "best_fitness_ixs": [best_perf["index"] for best_perf in self.best_perf_arr],
+            "best_eval_metrics": [best_perf["eval_metrics"] for best_perf in self.best_perf_arr]
             # "best_perf_arr": self.best_perf_arr
-        }
-        if self.config.n_eval_metrics > 0:
-            results["full_population_metrics"] = self.full_metrics_arr
-            results["eval_metrics"] = self.metrics_arr
-            # results["eval_metrics_stats"] = [
-            #     f"Avg {k}: {np.mean([i[k] for i in self.metrics_arr])}, "
-            #     + f"Std. Dev: {np.std([i[k] for i in self.metrics_arr])}"
-            #     for k in self.metrics_arr[0].keys()
-            # ]
-            results["best_eval_metrics"] = [best_perf["eval_metrics"] for best_perf in self.best_perf_arr]
+        }   
 
         return results
 
