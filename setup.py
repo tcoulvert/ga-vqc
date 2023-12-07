@@ -21,7 +21,7 @@ setup(
         "pandas >= 1.5",
         "scikit_learn >= 1.2",
         "pennylane >= 0.29",
-        "pennylane-qulacs >= 0.32"
+        "pennylane-qulacs >= 0.32",
         "qulacs-gpu >= 0.3", # Must install qulacs thru qulacs-gpu for qulacs plugin to work
     ],
     extras_require={
