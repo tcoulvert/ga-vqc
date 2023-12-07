@@ -277,28 +277,30 @@ class Model(GA_Model):
         post_process_end_time = time.time()
         self.total_ga_time += (post_process_end_time - post_process_start_time)
 
-        ### Final re-training for std. dev. estimate ###
-        retrain_start_time = time.time()
+        if vqc_config_ansatz["n_retrains"] < 20:
+            ### Final re-training for std. dev. estimate ###
+            retrain_start_time = time.time()
 
-        ansatz = self.best_perf["ansatz"]
-        vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
-        vqc_config_ansatz["n_retrains"] = 20
-        vqc_config_ansatz["dicts"] = ansatz.dicts
-        vqc_config_ansatz["qml"] = ansatz.qml
-        vqc_config_ansatz["diagram"] = ansatz.diagram
-        vqc_config_ansatz["params"] = ansatz.params
-        vqc_config_ansatz["gen"] = gen
-        
-        final_output = self.config.vqc(vqc_config_ansatz)
-        final_fitness = final_output["fitness_metrics"]
-        final_metrics = final_output["eval_metrics"]
-        if self.OUTPUT:
-            print(f"Final fitness: {final_fitness}")
-            for metric in final_metrics.keys():
-                print(f"Final {metric}: {final_metrics[metric]}")
+            for best_perf in self.best_perf_arr:
+                ansatz = best_perf["ansatz"]
+                vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
+                vqc_config_ansatz["n_retrains"] = 20
+                vqc_config_ansatz["dicts"] = ansatz.dicts
+                vqc_config_ansatz["qml"] = ansatz.qml
+                vqc_config_ansatz["diagram"] = ansatz.diagram
+                vqc_config_ansatz["params"] = ansatz.params
+                vqc_config_ansatz["gen"] = gen
+                
+                final_output = self.config.vqc(vqc_config_ansatz)
+                final_fitness = final_output["fitness_metrics"]
+                final_metrics = final_output["eval_metrics"]
+                if self.OUTPUT:
+                    print(f"Final fitness: {final_fitness}")
+                    for metric in final_metrics.keys():
+                        print(f"Final {metric}: {final_metrics[metric]}")
 
-        retrain_end_time = time.time()
-        self.retrain_time = retrain_end_time - retrain_start_time
+            retrain_end_time = time.time()
+            self.retrain_time = retrain_end_time - retrain_start_time
 
         TOTAL_TIME = self.total_ga_time + self.total_vqc_time + self.retrain_time
         if self.OUTPUT:

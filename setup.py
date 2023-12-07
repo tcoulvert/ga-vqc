@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="ga_vqc",
-    version="1.0.8",
+    version="1.0.9",
     description="Genetic Algorithm for VQC ansatz search.",
     packages=find_packages(include=["ga_vqc"]),
     classifiers=[
@@ -21,6 +21,7 @@ setup(
         "pandas >= 1.5",
         "scikit_learn >= 1.2",
         "pennylane >= 0.29",
+        "pennylane-qulacs >= 0.32"
         "qulacs-gpu >= 0.3", # Must install qulacs thru qulacs-gpu for qulacs plugin to work
     ],
     extras_require={
