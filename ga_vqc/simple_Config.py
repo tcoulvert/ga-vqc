@@ -41,6 +41,7 @@ class Config():
         self.max_concurrent = 1 # for multithreading/multiprocessing purposes
 
         self.n_qubits = 3
+        self.vqc_config["n_ansatz_qubits"] = self.n_qubits
         self.n_init_moments = 2
         self.max_moments = 4 # >= 1
         self.max_vector_moments = self.n_qubits * self.max_moments

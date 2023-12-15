@@ -47,7 +47,6 @@ class Model(GA_Model):
 
         ### hyperparams for qae ###
         self.vqc_config = config.vqc_config
-        self.vqc_config["n_ansatz_qubits"] = self.config.n_qubits
         self.vqc_config["start_time"] = self.start_time
 
         self.full_population = [self.generate_ansatz(diagram=ansatz) 
@@ -274,33 +273,33 @@ class Model(GA_Model):
                 ),
             )
 
-        post_process_end_time = time.time()
-        self.total_ga_time += (post_process_end_time - post_process_start_time)
+        # post_process_end_time = time.time()
+        # self.total_ga_time += (post_process_end_time - post_process_start_time)
 
-        if self.vqc_config["n_retrains"] < 20:
-            ### Final re-training for std. dev. estimate ###
-            retrain_start_time = time.time()
+        # if self.vqc_config["n_retrains"] < 20:
+        #     ### Final re-training for std. dev. estimate ###
+        #     retrain_start_time = time.time()
 
-            for best_perf in self.best_perf_arr:
-                ansatz = best_perf["ansatz"]
-                vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
-                vqc_config_ansatz["n_retrains"] = 20
-                vqc_config_ansatz["dicts"] = ansatz.dicts
-                vqc_config_ansatz["qml"] = ansatz.qml
-                vqc_config_ansatz["diagram"] = ansatz.diagram
-                vqc_config_ansatz["params"] = ansatz.params
-                vqc_config_ansatz["gen"] = gen
+        #     for best_perf in self.best_perf_arr:
+        #         ansatz = best_perf["ansatz"]
+        #         vqc_config_ansatz = {key: value for key, value in self.vqc_config.items()}
+        #         vqc_config_ansatz["n_retrains"] = 20
+        #         vqc_config_ansatz["dicts"] = ansatz.dicts
+        #         vqc_config_ansatz["qml"] = ansatz.qml
+        #         vqc_config_ansatz["diagram"] = ansatz.diagram
+        #         vqc_config_ansatz["params"] = ansatz.params
+        #         vqc_config_ansatz["gen"] = gen
                 
-                final_output = self.config.vqc(vqc_config_ansatz)
-                final_fitness = final_output["fitness_metrics"]
-                final_metrics = final_output["eval_metrics"]
-                if self.OUTPUT:
-                    print(f"Final fitness: {final_fitness}")
-                    for metric in final_metrics.keys():
-                        print(f"Final {metric}: {final_metrics[metric]}")
+        #         final_output = self.config.vqc(vqc_config_ansatz)
+        #         final_fitness = final_output["fitness_metrics"]
+        #         final_metrics = final_output["eval_metrics"]
+        #         if self.OUTPUT:
+        #             print(f"Final fitness: {final_fitness}")
+        #             for metric in final_metrics.keys():
+        #                 print(f"Final {metric}: {final_metrics[metric]}")
 
-            retrain_end_time = time.time()
-            self.retrain_time = retrain_end_time - retrain_start_time
+        #     retrain_end_time = time.time()
+        #     self.retrain_time = retrain_end_time - retrain_start_time
 
         TOTAL_TIME = self.total_ga_time + self.total_vqc_time + self.retrain_time
         if self.OUTPUT:
@@ -308,8 +307,8 @@ class Model(GA_Model):
             print(f'GA fraction of total time: {100 * self.total_ga_time / TOTAL_TIME:0.2f} %')
             print(f'Final VQC (quantum) time: {self.total_vqc_time:0.2f} seconds')
             print(f'VQC fraction of total time: {100 * self.total_vqc_time / TOTAL_TIME:0.2f} %')
-            print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time:0.2f} seconds')
-            print(f'Retrain fraction of total time: {100 * self.retrain_time / TOTAL_TIME:0.2f} %')
+            # print(f'Final retrain (quantum, for final statistics) time: {self.retrain_time:0.2f} seconds')
+            # print(f'Retrain fraction of total time: {100 * self.retrain_time / TOTAL_TIME:0.2f} %')
 
     def evaluate_fitness(self, gen):
         """
