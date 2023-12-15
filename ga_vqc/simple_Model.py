@@ -277,7 +277,7 @@ class Model(GA_Model):
         post_process_end_time = time.time()
         self.total_ga_time += (post_process_end_time - post_process_start_time)
 
-        if vqc_config_ansatz["n_retrains"] < 20:
+        if self.vqc_config["n_retrains"] < 20:
             ### Final re-training for std. dev. estimate ###
             retrain_start_time = time.time()
 
