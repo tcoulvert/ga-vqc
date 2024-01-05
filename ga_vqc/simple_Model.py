@@ -23,8 +23,12 @@ class Model(GA_Model):
 
     def __init__(self, config,  OUTPUT=True):
         """
-        TODO: make a self.config and use that when using config hyperparams
+        Params:
+            - config: the configuration object for the model, details in simple_Config.py
+            - OUTPUT: boolean that toggles whether model should print out anything (like progress
+                updates) during training
         """
+
         self.OUTPUT = OUTPUT
         self.config = config
 
@@ -36,6 +40,7 @@ class Model(GA_Model):
         self.metrics_arr = []
 
         self.set_of_all_circuit_diagrams = set(self.config.dict_of_preran_circuits.keys())
+        self.set_of_all_circuit_vectors = set() # Add in preran circuit vectors at beginning
 
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         # Following time variables for debugging purposes only #
@@ -80,6 +85,14 @@ class Model(GA_Model):
         
     
     def update_best_perf(self, best_keep_ixs):
+        """
+        Manages the upkeep of the self.best_perf array which tracks the best circuits the GA has found.
+
+        Params:
+            - best_keep_ixs: the indeces of the current self.best_perf_arr thast will remain in the updated
+                self.best_perf_arr
+        """
+
         temp_best_perf_arr = []
         for i in range(len(self.best_perf_arr)):
             if i in best_keep_ixs:
@@ -99,6 +112,17 @@ class Model(GA_Model):
         self.best_perf_arr = [copy.deepcopy(temp_best_perf_arr[i]) for i in sorted_ixs]
 
     def generate_ansatz(self, dicts=None, diagram=None):
+        """
+        Handles the generation/construction of new ansatz - serves no purpose other than 
+        cleaning up the code by moving the large constructor calls into 1 central function.
+
+        Params:
+            - dicts: optional parameter that constructs a new ansatz from a list of dictionaries 
+                of moments (more info in simple_Individual.py)
+            - diagram: optional parameter that constructs a new ansatz from a circuit diagram (more 
+                info in simple_Individual.py)
+        """
+
         if dicts is None and diagram is None:
             ansatz = Individual(
                         self.config.n_qubits,
@@ -133,6 +157,16 @@ class Model(GA_Model):
         return ansatz
     
     def update_circuit_set(self, max_vector_moments):
+        """
+        Updates the vector set of all optimized circuits, so that the GA doesn't re-run old circuits
+        AND so that new random circuits can be maximally different from previously run ones.
+            -> !!! Not currently used in the GA to track anything: tracking handled with diagram set !!!
+
+        Params:
+            - max_vector_moments: the highest number of moments in all of the run circuits, important 
+                for vector generation.
+        """
+
         self.config.max_vector_moments = max_vector_moments
         self.set_of_all_circuit_vectors = set()
         for ansatz in self.full_population+self.temp_pop:
@@ -140,9 +174,26 @@ class Model(GA_Model):
             self.set_of_all_circuit_vectors.add(tuple(ansatz.vector))
 
     def clean(self):
+        """
+        Resets the self.temp_pop variable. Serves no purpose than to clean up code by renaming
+        the resetting into a more understandable name.
+        """
+
         self.temp_pop = []
 
     def distance(self, circuit_A, population, INIT=False):
+        """
+        Calculates the distance between a test circuit and a population of other circuits. For more info
+        on how distances are calculated, see Distance.py
+
+        Params:
+            - circuit_A: test circuit to calculate distance with respect to
+            - population: the population of circuits to compare circuit_A to
+            - INIT: boolean that toggles whether the distance calculation is from the initial 
+                population generation. Useful because the number of initial circuits makes it advantageous to
+                use a quick-and-dirty comparison method as compared to calculating distances during training.
+        """
+
         if (INIT and self.config.init_distance_method == 'euclidean') or (not INIT and self.config.distance_method == 'euclidean'):
             return np.mean(
                     euclidean_distances(
@@ -164,10 +215,10 @@ class Model(GA_Model):
         
     def generate_initial_pop(self):
         """
-        Generates the initial population by making many more individuals than needed, and pruning down to pop_size by taking maximally different individuals.
-
-        TODO: Change to a custom distance calculation that can be stored in each ansatz?
+        Generates the initial population by making many more individuals than needed, and 
+        pruning down to pop_size by taking maximally different individuals.
         """
+
         start_time = time.time()
         self.new_best_perf()
         for _ in range(self.config.init_pop_size):
@@ -213,6 +264,7 @@ class Model(GA_Model):
         """
         Evolves the GA.
         """
+
         gen = 0
         while True:
             if self.OUTPUT:
@@ -239,11 +291,16 @@ class Model(GA_Model):
             self.population.extend(children)
             self.population.extend(immigrants)
             if self.OUTPUT:
-                print(
-                    f"Best fitness metrics: {self.best_perf_arr[0]['fitness_metrics']}, " + 
-                    f"Best eval metrics: {self.best_perf_arr[0]['eval_metrics']}, \n" +
-                    f"Best ansatz: \n{self.best_perf_arr[0]['diagram']}"
-                )
+                i = 0
+                for best_perf in self.best_perf_arr:
+                    print(
+                        f"{'-'*30}"
+                        f"index: {i}, \n" +
+                        f"Best fitness metrics: {[f'{key}: {val:.03f}' for key, val in best_perf['fitness_metrics'].items()]}, \n" + 
+                        f"Best eval metrics: {[f'{key}: {val:.03f}' for key, val in best_perf['eval_metrics'].items()]}, \n" +
+                        f"Best ansatz: \n{best_perf['diagram']}"
+                    )
+                    i+=1
 
             break_flag = False
             for best_perf in self.best_perf_arr:
@@ -314,8 +371,10 @@ class Model(GA_Model):
         """
         Evaluates the fitness level of all ansatz. Runs the QML optimization task.
 
-        TODO: make distinction between 'max_moments' for generating new cirsuits and 'max_moments' for making vectors
+        Params:
+            - gen: the current generation of the GA
         """
+
         # Setup function args for multithreading #
         ix = 0
         args_arr = []
@@ -408,6 +467,13 @@ class Model(GA_Model):
 
         
     def make_results(self, gen):
+        """
+        Generates the output data (graphs + dictionary) and files.
+
+        Params:
+            - gen: the current generation of the GA 
+        """
+
         ### tSNE clustering ###
         destdir_curves = os.path.join(self.config.ga_output_path, "ga_curves", "run-%s" % self.start_time)
         if not os.path.exists(destdir_curves):
@@ -455,7 +521,6 @@ class Model(GA_Model):
             "best_fitness_gens": [best_perf["generation"] for best_perf in self.best_perf_arr],
             "best_fitness_ixs": [best_perf["index"] for best_perf in self.best_perf_arr],
             "best_eval_metrics": [best_perf["eval_metrics"] for best_perf in self.best_perf_arr]
-            # "best_perf_arr": self.best_perf_arr
         }   
 
         return results
@@ -482,8 +547,12 @@ class Model(GA_Model):
         """
         Swaps the qubits of ansatz.
 
-        TODO: Change so that mating happens at Individual level by passing in the set of qubits that we want to swap to a function in the Individual class.
+        Params:
+            - parents: array of circuits from old generation that will mate to create 
+                the new generation
+            - num_children: number of children for each pair of parents
         """
+
         children_arr = []
         swap_ixs = []
         parents = self.deep_permutation(parents)
@@ -553,6 +622,12 @@ class Model(GA_Model):
         return children_arr[:num_children]
 
     def deep_permutation(self, arr):
+        """
+        Piggybacks on numpy.permutation to perform permutations on arrays of custom user-defined types
+        without having to duplicate in memory - ie. just permutes at the array level with the memory addresses
+        of the underlying objects.
+        """
+
         arr_copy = [i for i in arr]
         ix_arr = self.rng.permutation(len(arr))
         for i in range(len(arr)):
@@ -564,7 +639,10 @@ class Model(GA_Model):
         """
         Mutates a single ansatz by modifying n_mutations random qubit(s) at 1 random time each.
 
-        TODO: add in functionality to add or remove moments from an ansatz
+        Params:
+            - ansatz: the circuit to mutate
+            - n_mutations: optional parameter for the number of mutations to perform on 
+                the circuit
 
         Variables
             j: selected moment
@@ -594,7 +672,12 @@ class Model(GA_Model):
 
     def immigrate(self, n_individuals):
         """
-        Adds in new individuals with every generation, in order to keep up the overall population diversity.
+        Adds in new individuals with every generation, in order to keep up the overall 
+        population diversity. Overgenerates circuits and selects the ones with maximum
+        distance to previously run circuits.
+
+        Params:
+            - n_individuals: number of new circuits to generate
         """
         immigrant_arr = []
         for _ in range(n_individuals):
@@ -632,6 +715,13 @@ class Model(GA_Model):
         return immigrant_arr
             
     def anneal_manager(self, gen):
+        """
+        Handles the 'annealing' portion of the GA. In principle this would change the fraction of 
+        children and immigrants created as the GA evolves.
+            -> !!! Not currently used to do real annealing the GA: kept as an example 
+            of what could be done !!!
+        """
+        
         num_children = self.config.pop_size // 2
         num_immigrants = self.config.pop_size - num_children
         
