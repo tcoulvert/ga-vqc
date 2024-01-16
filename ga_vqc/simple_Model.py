@@ -490,7 +490,7 @@ class Model(GA_Model):
             )
             plt.figure(1)
             plt.style.use("seaborn")
-            plt.scatter(x, y, marker=".", c=[m["avg_auroc"] for m in self.full_metrics_arr], cmap=plt.set_cmap('plasma'))
+            plt.scatter(x, y, marker=".", c=[m["auroc"] for m in self.full_metrics_arr], cmap=plt.set_cmap('plasma'))
             plt.ylabel("a.u.")
             plt.xlabel("a.u.")
             cbar = plt.colorbar()
