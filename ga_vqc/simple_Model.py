@@ -21,15 +21,16 @@ class Model(GA_Model):
     TODO: change the I assignment to a random assignment.
     """
 
-    def __init__(self, config,  OUTPUT=True):
+    def __init__(self, config,  OUTPUT=True, DEBUG=False):
         """
         Params:
             - config: the configuration object for the model, details in simple_Config.py
             - OUTPUT: boolean that toggles whether model should print out anything (like progress
                 updates) during training
         """
-
+        self.DEBUG = DEBUG
         self.OUTPUT = OUTPUT
+
         self.config = config
 
         self.best_perf_arr = []
@@ -92,7 +93,6 @@ class Model(GA_Model):
             - best_keep_ixs: the indeces of the current self.best_perf_arr thast will remain in the updated
                 self.best_perf_arr
         """
-
         temp_best_perf_arr = []
         for i in range(len(self.best_perf_arr)):
             if i in best_keep_ixs:
@@ -100,14 +100,19 @@ class Model(GA_Model):
                     self.best_perf_arr[i]
                 ))
 
+        unsorted_ix_set = set([i for i in range(len(temp_best_perf_arr))])
         sorted_ixs = []
-        for i in range(len(temp_best_perf_arr)):
-            next_best_ix = i
-            for j in range(len(temp_best_perf_arr)):
-                if self.config.compare_fitness(temp_best_perf_arr[j]["fitness_metrics"], 
-                        temp_best_perf_arr[i]["fitness_metrics"]):
-                    next_best_ix = j
-            sorted_ixs.append(next_best_ix)
+        while len(sorted_ixs) < len(temp_best_perf_arr):
+            unsorted_ix_list = list(unsorted_ix_set)
+            largest_ix = unsorted_ix_list[0]
+
+            for i in unsorted_ix_list:
+                if self.config.compare_fitness(temp_best_perf_arr[i]["fitness_metrics"], 
+                        temp_best_perf_arr[largest_ix]["fitness_metrics"]):
+                    largest_ix = i
+            
+            sorted_ixs.append(largest_ix)
+            unsorted_ix_set.remove(largest_ix)
 
         self.best_perf_arr = [copy.deepcopy(temp_best_perf_arr[i]) for i in sorted_ixs]
 
@@ -272,7 +277,7 @@ class Model(GA_Model):
 
             # Evaluating Fitness (Running VQCs) # 
             vqc_start_time = time.time()
-            self.evaluate_fitness(gen)
+            self.evaluate_fitness(gen) if not self.DEBUG else self.debug_eval_fitness(gen)
             vqc_end_time = time.time()
             self.total_vqc_time += (vqc_end_time - vqc_start_time)
 
@@ -462,8 +467,45 @@ class Model(GA_Model):
                                 ), 
                                generation=gen, 
                                index=ix)
-            best_keep_ix_set.add(len(best_keep_ix_set))
+            best_keep_ix_set.add(len(self.best_perf_arr)-1)
+        # print(f'pre update best_perf_arr: {len(self.best_perf_arr)}')
         self.update_best_perf(best_keep_ix_set)
+        # print(f'POST update best_perf_arr: {len(self.best_perf_arr)}')
+
+    def debug_eval_fitness(self, gen):
+        self.fitness_arr = []
+        self.metrics_arr = []
+        for _ in range(len(self.population)):
+            self.fitness_arr.append(
+                {"avg_fitness": self.rng.random(),
+                "stddev_fitness": self.rng.random()})
+            self.metrics_arr.append(
+                {"auroc": self.rng.random()}
+            )
+
+        best_keep_ix_set, new_keep_ix_set = self.config.choose_best([best_perf['fitness_metrics'] for best_perf in self.best_perf_arr], self.fitness_arr)
+        for ix in list(new_keep_ix_set):
+            if self.OUTPUT:
+                print('NEW GOOD CIRCUIT')
+            self.new_best_perf(fitness_metrics=self.fitness_arr[ix], 
+                               eval_metrics=copy.deepcopy(
+                                    self.metrics_arr[ix]
+                                ), 
+                               ansatz=copy.deepcopy(
+                                    self.population[ix]
+                                ), 
+                               dicts=copy.deepcopy(
+                                    self.population[ix].dicts
+                                ), 
+                               diagram=copy.deepcopy(
+                                    self.population[ix].diagram
+                                ), 
+                               generation=gen, 
+                               index=ix)
+            best_keep_ix_set.add(len(self.best_perf_arr)-1)
+        # print(f'pre update best_perf_arr: {len(self.best_perf_arr)}')
+        self.update_best_perf(best_keep_ix_set)
+        # print(f'POST update best_perf_arr: {len(self.best_perf_arr)}')
 
         
     def make_results(self, gen):
